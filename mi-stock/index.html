@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi stock · Essence & Co</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,300..900;1,62..125,300..900&family=Pinyon+Script&display=swap" rel="stylesheet">
+<style>
+/* Layout: encabezado + pestañas fijas arriba; una columna de tarjetas de trabajo, cómoda en celular */
+:root{
+  --bg:#F2F4F3; --surface:#FFFFFF; --ink:#16201D; --muted:#5B6A65; --line:#DCE3E0;
+  --accent:#1E5B4F; --accent-ink:#FFFFFF; --accent-soft:#DDEBE7;
+  --amber:#9A5C0C; --amber-soft:#F6E9D4;
+  --good:#2E7D4F; --good-soft:#E1F1E7; --warn:#9A5C0C; --warn-soft:#F8ECD8; --bad:#B23A3A; --bad-soft:#F7E2E2;
+  --display:"DM Serif Display", Georgia, "Times New Roman", serif;
+  --body:"Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1513; --surface:#17201D; --ink:#E7EEEB; --muted:#9AAAA4; --line:#2A3632;
+    --accent:#72C3AF; --accent-ink:#0F1513; --accent-soft:#1D3530;
+    --amber:#E3A84E; --amber-soft:#3A2C17;
+    --good:#7BCB98; --good-soft:#1B3325; --warn:#E3A84E; --warn-soft:#3A2C17; --bad:#EE8B8B; --bad-soft:#3B1D1D;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1513; --surface:#17201D; --ink:#E7EEEB; --muted:#9AAAA4; --line:#2A3632;
+  --accent:#72C3AF; --accent-ink:#0F1513; --accent-soft:#1D3530;
+  --amber:#E3A84E; --amber-soft:#3A2C17;
+  --good:#7BCB98; --good-soft:#1B3325; --warn:#E3A84E; --warn-soft:#3A2C17; --bad:#EE8B8B; --bad-soft:#3B1D1D;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+h1,h2,h3{font-family:var(--display);font-weight:400;line-height:1.15;text-wrap:balance;margin:0}
+h1{font-size:1.5rem} h2{font-size:1.6rem} h3{font-size:1.2rem}
+p{margin:0}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px}
+header.top{background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;padding-bottom:10px;flex-wrap:wrap}
+.brand small{display:block;color:var(--muted);font-size:.85rem;font-family:var(--body)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+p.pill{white-space:normal}
+section.view>*{min-width:0}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.plain{background:transparent;border:1px solid var(--line);color:var(--muted)}
+nav.tabs{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+nav.tabs .wrap{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav.tabs .wrap::-webkit-scrollbar{display:none}
+nav.tabs a{flex:0 0 auto;padding:12px 12px 10px;color:var(--muted);text-decoration:none;font-weight:600;font-size:.95rem;border-bottom:3px solid transparent}
+nav.tabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
+nav.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+main{padding:20px 0 60px}
+section.view{display:none}
+section.view.on{display:grid;gap:16px}
+.lead{color:var(--muted);max-width:65ch}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:12px}
+.card.hl{border-color:var(--accent)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.between{justify-content:space-between}
+.grid2{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.tile b{display:block;font-family:var(--display);font-size:2rem;font-weight:400;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile span{color:var(--muted);font-size:.9rem}
+label{display:grid;gap:4px;font-size:.88rem;font-weight:600;color:var(--muted)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
+textarea{min-height:80px;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fields{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+button,.btn{font:inherit;font-weight:600;font-size:.92rem;border-radius:8px;padding:9px 14px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+button.ghost,.btn.ghost{background:transparent;color:var(--accent)}
+button.quiet{background:transparent;border-color:var(--line);color:var(--muted)}
+button.danger{background:transparent;border-color:var(--bad);color:var(--bad)}
+button.small,.btn.small{padding:5px 10px;font-size:.84rem}
+button:disabled{opacity:.5;cursor:not-allowed}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-wrap:wrap}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:8px 12px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.list{display:grid;gap:10px}
+.item{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:8px;background:var(--surface)}
+.item.due{border-left:4px solid var(--bad)}
+.item.soon{border-left:4px solid var(--warn)}
+.item.okk{border-left:4px solid var(--good)}
+.meta{color:var(--muted);font-size:.88rem}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:.76rem;padding:2px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+.perf{display:grid;gap:6px;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--surface)}
+.perf h4{margin:0;font-size:1.02rem}
+.perf .why{font-size:.88rem;color:var(--muted)}
+.rank{font-family:var(--display);color:var(--amber);font-size:1.2rem;width:1.6em}
+.facts{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.fact{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg)}
+.fact small{display:block;color:var(--muted);font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.fact strong{font-size:1.02rem}
+.levelbar{display:flex;gap:3px}
+.levelbar i{width:18px;height:8px;border-radius:2px;background:var(--line)}
+.levelbar i.on{background:var(--amber)}
+.msg{white-space:pre-wrap;background:var(--bg);border:1px dashed var(--line);border-radius:10px;padding:12px;font-size:.93rem}
+ul.clean{margin:0;padding-left:1.1em;display:grid;gap:4px}
+.empty{color:var(--muted);font-size:.93rem;padding:6px 0}
+.example{outline:2px dashed var(--amber);outline-offset:-2px}
+.overlay{position:fixed;inset:0;background:rgba(10,15,13,.55);display:none;align-items:flex-end;justify-content:center;z-index:50;padding:12px}
+.overlay.on{display:flex}
+.sheet{background:var(--surface);border-radius:14px;padding:18px;width:100%;max-width:560px;max-height:90vh;overflow:auto;display:grid;gap:12px}
+@media (min-width:640px){.overlay{align-items:center}}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s;z-index:60}
+.toast.on{opacity:1}
+.num{font-variant-numeric:tabular-nums}
+table.t{width:100%;border-collapse:collapse;font-size:.9rem}
+table.t th,table.t td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.t th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em}
+table.t input{padding:6px 8px;width:96px}
+.scroll{overflow-x:auto}
+.res{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.res div{background:var(--bg);border-radius:10px;padding:10px 12px}
+.res small{display:block;color:var(--muted);font-size:.8rem}
+.res b{font-size:1.25rem;font-variant-numeric:tabular-nums}
+.note{font-size:.84rem;color:var(--muted)}
+details summary{cursor:pointer;font-weight:600;color:var(--accent)}
+.lines{display:grid;gap:8px}
+.line{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg)}
+.qty{display:inline-flex;align-items:center;gap:4px}
+.qty input{width:56px;text-align:center;padding:6px}
+.qty button{padding:4px 10px}
+.results{display:grid;gap:6px;max-height:240px;overflow:auto}
+.result{display:flex;justify-content:space-between;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.prop{display:grid;gap:10px}
+.prop ul{margin:0;padding-left:1.1em;display:grid;gap:3px}
+.prog{height:10px;border-radius:999px;background:var(--line);overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.foto{width:56px;height:56px;border-radius:8px;object-fit:cover;background:#fff;border:1px solid var(--line);flex:0 0 auto}
+.foto.sm{width:40px;height:40px}
+.foto.lg{width:72px;height:72px}
+.nofoto{display:inline-flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--muted);text-align:center;line-height:1.1}
+.internal{background:var(--amber-soft);border-radius:10px;padding:10px 12px;font-size:.9rem;display:grid;gap:4px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
+/* listas desplegables con el mismo estilo */
+select.dd-native{position:absolute!important;opacity:0!important;pointer-events:none!important;width:1px!important;height:1px!important;padding:0!important;border:0!important;margin:0!important}
+label{position:relative}
+button.dd-btn{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0;cursor:pointer;font:inherit;font-weight:400;color:var(--ink);background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:12px;padding:10px 12px;transition:border-color .2s, box-shadow .2s;text-align:left}
+button.dd-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button.dd-btn::after{content:""!important;margin-left:0!important;flex:0 0 auto;width:8px;height:8px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg) translateY(-2px);transition:transform .3s var(--ease);margin-right:2px}
+button.dd-btn[aria-expanded="true"]{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+button.dd-btn[aria-expanded="true"]::after{transform:rotate(225deg) translateY(-2px)!important}
+button.dd-btn:hover{transform:none;box-shadow:none;border-color:rgba(47,111,214,.4)}
+button.dd-btn:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+button.dd-btn:disabled{opacity:.5;cursor:not-allowed}
+table.t button.dd-btn{padding:6px 8px}
+.dd-panel{position:fixed;z-index:200;max-height:300px;overflow:auto;padding:6px;border-radius:16px;background:rgba(255,255,255,.88);-webkit-backdrop-filter:saturate(160%) blur(20px);backdrop-filter:saturate(160%) blur(20px);border:1px solid rgba(255,255,255,.9);box-shadow:0 18px 40px -16px rgba(40,80,120,.45), 0 2px 8px -2px rgba(40,80,120,.12);animation:ddIn .28s var(--ease) both;overscroll-behavior:contain}
+@keyframes ddIn{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+.dd-opt{padding:9px 12px;border-radius:10px;cursor:pointer;color:var(--ink);font-size:.95rem;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dd-opt:hover,.dd-opt.act{background:var(--accent-soft)}
+.dd-opt[aria-selected="true"]{background:var(--accent);color:#fff}
+.dd-opt[aria-selected="true"]::after{content:"✓";font-size:.85rem}
+.dd-opt[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.dd-grp{padding:8px 12px 4px;font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+
+@media (prefers-reduced-motion: reduce){ .dd-panel{animation:none} }
+
+/* ======== Estilo cinematográfico editorial (solo visual) ======== */
+:root, :root:not([data-theme="light"]), :root[data-theme="dark"]{
+  --storm:#3A3A3C; --cream:#F2E6D8; --gold:#8C6A3F; --gold-2:#A88454;
+  --bg:rgba(242,230,216,.05); --surface:rgba(46,46,49,.58); --ink:#F2E6D8; --muted:#BFB3A3; --line:rgba(242,230,216,.14);
+  --accent:#8C6A3F; --accent-ink:#F2E6D8; --accent-soft:rgba(168,132,84,.2);
+  --amber:#D6B27A; --amber-soft:rgba(214,178,122,.14);
+  --good:#A9BFA0; --good-soft:rgba(169,191,160,.14); --warn:#D6B27A; --warn-soft:rgba(214,178,122,.14); --bad:#D59A8A; --bad-soft:rgba(213,154,138,.14);
+  --display:"Archivo", "Helvetica Neue", Arial, sans-serif; --body:"Archivo", system-ui, sans-serif; --script:"Pinyon Script", "Snell Roundhand", cursive;
+  --glass:saturate(130%) blur(16px); --ease:cubic-bezier(.16,1,.3,1);
+  --shadow:0 24px 50px -28px rgba(0,0,0,.75);
+  color-scheme:dark;
+}
+html{background:#2A2A2C}
+body{font-family:var(--body);font-stretch:96%;color:var(--ink);min-height:100vh;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(120% 60% at 50% 105%, rgba(140,106,63,.55) 0%, rgba(90,70,48,.35) 35%, transparent 70%),
+    linear-gradient(180deg, #2C2D30 0%, #3A3A3C 30%, #47423D 62%, #4E4134 85%, #3B3129 100%);
+  background-attachment:fixed}
+#aura{position:fixed;inset:-15%;z-index:-1;pointer-events:none;overflow:hidden}
+#aura i{position:absolute;border-radius:50%;filter:blur(80px);will-change:transform;transition:transform 1.4s var(--ease)}
+#aura i:nth-child(1){width:70vw;height:30vw;left:-10%;top:4%;background:radial-gradient(closest-side, rgba(150,150,155,.55), transparent);opacity:.7}
+#aura i:nth-child(2){width:60vw;height:26vw;right:-12%;top:14%;background:radial-gradient(closest-side, rgba(110,110,116,.6), transparent);opacity:.8}
+#aura i:nth-child(3){width:80vw;height:30vw;left:10%;bottom:2%;background:radial-gradient(closest-side, rgba(168,132,84,.45), transparent);opacity:.7}
+::selection{background:var(--gold);color:var(--cream)}
+p,li,.meta,.lead{letter-spacing:.005em}
+h1,h2,h3{font-family:var(--display);color:var(--cream)}
+h2{font-size:clamp(2rem,4.2vw,3.1rem);font-weight:800;font-stretch:78%;text-transform:uppercase;letter-spacing:-.02em;line-height:.95}
+h3{font-size:1.15rem;font-weight:600;letter-spacing:.01em}
+.lead{color:var(--muted);font-size:1rem;line-height:1.6;max-width:62ch}
+/* Encabezado: nombre enorme que ocupa el ancho, con la palabra en caligrafía cruzando encima */
+header.top{background:transparent;border:0;position:relative;overflow:hidden}
+header.top .wrap{position:relative;display:block;padding-top:58px;padding-bottom:18px}
+.brand{position:relative;will-change:transform}
+.brand h1{font-size:clamp(3.2rem,13.2vw,9.5rem);font-weight:900;font-stretch:72%;text-transform:uppercase;letter-spacing:-.035em;line-height:.82;color:var(--cream);opacity:.94;
+  background:linear-gradient(180deg, #F2E6D8 30%, rgba(242,230,216,.55) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap}
+.brand small{position:absolute;right:2%;bottom:-.05em;font-family:var(--script);font-size:clamp(1.5rem,4.2vw,3.2rem);color:#FFFFFF;font-weight:400;letter-spacing:0;transform:rotate(-6deg);text-shadow:0 6px 24px rgba(0,0,0,.45);white-space:nowrap;pointer-events:none}
+#savePill{position:absolute;top:18px;right:16px;z-index:2}
+/* Menú: píldoras de contorno, la activa rellena */
+nav.tabs{background:rgba(42,42,44,.55);-webkit-backdrop-filter:var(--glass);backdrop-filter:var(--glass);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+nav.tabs .wrap{gap:8px;padding-top:10px;padding-bottom:10px}
+nav.tabs a{border:1px solid rgba(242,230,216,.35);border-radius:999px;padding:7px 16px;color:var(--cream);font-weight:500;font-size:.88rem;letter-spacing:.03em;text-transform:uppercase;font-stretch:90%;transition:background .4s var(--ease), color .4s var(--ease), border-color .4s var(--ease)}
+nav.tabs a:hover{border-color:var(--cream);background:rgba(242,230,216,.08)}
+nav.tabs a[aria-current="page"]{background:var(--cream);color:var(--storm);border-color:var(--cream)}
+main{padding:34px 0 90px}
+section.view.on{gap:22px}
+/* Tarjetas translúcidas */
+.card,.tile,.item,.perf,.result,.line{background:var(--surface);-webkit-backdrop-filter:var(--glass);backdrop-filter:var(--glass);border:1px solid var(--line);box-shadow:var(--shadow)}
+.card{border-radius:20px;padding:22px}
+.tile{border-radius:18px;padding:18px 18px 16px;position:relative;overflow:hidden;transition:transform .6s var(--ease), border-color .4s}
+.tile::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg, transparent, rgba(242,230,216,.45), transparent)}
+.tile:hover{transform:translateY(-3px);border-color:rgba(242,230,216,.3)}
+.tile b{font-family:var(--display);font-weight:300;font-stretch:80%;font-size:2.6rem;letter-spacing:-.03em;color:var(--cream)}
+.tile span{color:var(--muted);text-transform:uppercase;font-size:.72rem;letter-spacing:.12em}
+.item,.perf{border-radius:16px;padding:14px 16px}
+.item.due{border-left:2px solid var(--bad)} .item.soon{border-left:2px solid var(--warn)} .item.okk{border-left:2px solid var(--good)}
+.sheet{background:rgba(44,44,47,.92);-webkit-backdrop-filter:var(--glass);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:22px;box-shadow:0 40px 80px -30px rgba(0,0,0,.8)}
+.overlay{background:rgba(20,20,22,.55);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}
+.result,.line{border-radius:12px;box-shadow:none}
+.fact,.res div,.msg{background:rgba(242,230,216,.05);border:1px solid var(--line);border-radius:12px;color:var(--ink)}
+.fact small,.res small{color:var(--muted);letter-spacing:.1em}
+.meta{color:var(--muted)}
+strong{color:var(--cream)}
+label{color:var(--muted);font-weight:500;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em}
+input,select,textarea{background:rgba(20,20,22,.35);color:var(--cream);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.95rem;text-transform:none;letter-spacing:0;transition:border-color .25s, box-shadow .25s}
+input::placeholder,textarea::placeholder{color:rgba(191,179,163,.6)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold-2);box-shadow:0 0 0 3px rgba(168,132,84,.22)}
+input[type=checkbox]{accent-color:var(--gold)}
+input[type=date]{color-scheme:dark}
+label.row,label:has(input[type=checkbox]){text-transform:none;letter-spacing:.01em;font-size:.9rem;color:var(--cream)}
+/* Botones píldora */
+button,.btn{border-radius:999px;font-weight:600;font-size:.86rem;letter-spacing:.05em;text-transform:uppercase;font-stretch:90%;padding:10px 20px;border:1px solid var(--gold);background:var(--gold);color:var(--cream);box-shadow:0 10px 24px -14px rgba(140,106,63,.9);transition:transform .45s var(--ease), background .3s, border-color .3s, color .3s}
+button:hover:not(:disabled),.btn:hover{background:var(--gold-2);border-color:var(--gold-2);transform:translateY(-1px)}
+button:active:not(:disabled){transform:scale(.98)}
+button.ghost,.btn.ghost,button.quiet{background:transparent;border:1px solid rgba(242,230,216,.45);color:var(--cream);box-shadow:none}
+button.ghost:hover,button.quiet:hover{background:rgba(242,230,216,.1);border-color:var(--cream)}
+button.danger{background:transparent;border:1px solid rgba(213,154,138,.55);color:var(--bad);box-shadow:none}
+button.danger:hover{background:rgba(213,154,138,.1);border-color:var(--bad)}
+button.small,.btn.small{padding:6px 14px;font-size:.74rem}
+/* Selectores segmentados: contorno con la opción activa rellena */
+.seg{background:rgba(20,20,22,.3);border:1px solid rgba(242,230,216,.3);border-radius:999px;padding:3px;gap:2px}
+.seg button{background:transparent;border:0;color:var(--muted);box-shadow:none;padding:7px 14px;text-transform:none;letter-spacing:.01em;font-size:.86rem}
+.seg button:hover{background:rgba(242,230,216,.08);color:var(--cream);transform:none}
+.seg button[aria-pressed="true"]{background:var(--cream);color:var(--storm)}
+/* Etiquetas */
+.pill{font-weight:600;font-size:.72rem;letter-spacing:.04em;padding:4px 11px;border:1px solid transparent}
+.pill.plain{background:transparent;border-color:rgba(242,230,216,.3);color:var(--cream)}
+#savePill{background:rgba(42,42,44,.55);-webkit-backdrop-filter:var(--glass);backdrop-filter:var(--glass);border:1px solid var(--line)}
+.tag{background:transparent;border-color:rgba(242,230,216,.22);color:var(--muted)}
+.foto{border-radius:10px;border:1px solid rgba(242,230,216,.25);background:#EDE4D8;box-shadow:0 8px 18px -10px rgba(0,0,0,.7)}
+.prog{background:rgba(242,230,216,.12)} .prog i{background:linear-gradient(90deg, var(--gold), #C9A46E)}
+.levelbar i{background:rgba(242,230,216,.15);border-radius:3px} .levelbar i.on{background:var(--gold-2)}
+.rank{font-family:var(--script);font-size:1.9rem;color:var(--cream);font-weight:400}
+.example{outline:1px dashed rgba(242,230,216,.35)}
+.internal{background:rgba(140,106,63,.18);color:var(--cream)}
+table.t th{color:var(--muted);font-weight:600;letter-spacing:.1em;font-size:.7rem}
+table.t th,table.t td{border-bottom-color:var(--line)}
+details summary{color:var(--cream);font-weight:600}
+.toast{background:var(--cream);color:var(--storm);font-weight:600}
+.empty{color:var(--muted)}
+/* listas desplegables en esta paleta (editorial) */
+button.dd-btn{background:rgba(20,20,22,.38);color:var(--cream);border:1px solid rgba(242,230,216,.18);border-radius:999px;padding:10px 16px;font-weight:500;text-transform:none;letter-spacing:.01em;font-size:.95rem;box-shadow:inset 0 1px 0 rgba(242,230,216,.06);transition:border-color .3s var(--ease), background .3s var(--ease), box-shadow .3s var(--ease)}
+button.dd-btn:hover{background:rgba(20,20,22,.5);border-color:rgba(242,230,216,.4);transform:none;box-shadow:inset 0 1px 0 rgba(242,230,216,.08)}
+button.dd-btn::after{width:7px;height:7px;border-right:1.5px solid var(--gold-2);border-bottom:1.5px solid var(--gold-2)}
+button.dd-btn[aria-expanded="true"],button.dd-btn:focus-visible{border-color:var(--gold-2);background:rgba(20,20,22,.55);box-shadow:0 0 0 3px rgba(168,132,84,.2)}
+table.t button.dd-btn{padding:6px 12px}
+.dd-panel{padding:8px;border-radius:18px;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"), linear-gradient(180deg, rgba(52,52,55,.96), rgba(44,41,38,.96));
+  -webkit-backdrop-filter:saturate(130%) blur(18px);backdrop-filter:saturate(130%) blur(18px);
+  border:1px solid rgba(242,230,216,.16);box-shadow:0 30px 60px -24px rgba(0,0,0,.85), inset 0 1px 0 rgba(242,230,216,.08);
+  animation:ddCine .38s var(--ease) both;scrollbar-width:thin;scrollbar-color:rgba(168,132,84,.6) transparent}
+.dd-panel::-webkit-scrollbar{width:6px} .dd-panel::-webkit-scrollbar-thumb{background:rgba(168,132,84,.55);border-radius:6px}
+@keyframes ddCine{from{opacity:0;transform:translateY(-8px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+.dd-opt{position:relative;color:var(--cream);font-size:.94rem;padding:10px 14px 10px 18px;border-radius:12px;transition:background .25s var(--ease), padding .3s var(--ease), color .2s}
+.dd-opt::before{content:"";position:absolute;left:8px;top:50%;width:2px;height:0;background:var(--gold-2);border-radius:2px;transform:translateY(-50%);transition:height .3s var(--ease)}
+.dd-opt:hover,.dd-opt.act{background:rgba(242,230,216,.07);padding-left:22px}
+.dd-opt:hover::before,.dd-opt.act::before{height:56%}
+.dd-opt[aria-selected="true"]{background:var(--cream);color:var(--storm);font-weight:600}
+.dd-opt[aria-selected="true"]::before{display:none}
+.dd-opt[aria-selected="true"]::after{content:"✓";color:var(--gold);font-weight:700}
+.dd-opt[aria-disabled="true"]{opacity:.4}
+.dd-grp{color:var(--gold-2);font-size:.68rem;letter-spacing:.16em;padding:10px 14px 4px;border-top:1px solid rgba(242,230,216,.1);margin-top:4px}
+.dd-grp:first-child{border-top:0;margin-top:0}
+@media (prefers-reduced-motion: reduce){ .dd-panel{animation:none} .dd-opt,.dd-opt::before{transition:none} }
+/* Animaciones de entrada cinematográficas */
+@keyframes revelar{from{opacity:0;transform:translateY(28px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+@keyframes tituloEntra{from{opacity:0;letter-spacing:.06em;transform:translateY(18px)}to{opacity:.94;letter-spacing:-.035em;transform:none}}
+@keyframes firma{from{opacity:0;transform:rotate(-6deg) translateX(-24px);clip-path:inset(0 100% 0 0)}to{opacity:1;transform:rotate(-6deg);clip-path:inset(0 0 0 0)}}
+.brand h1{animation:tituloEntra 1.6s var(--ease) both}
+.brand small{animation:firma 1.6s .5s var(--ease) both}
+section.view.on>*{animation:revelar 1.1s var(--ease) both}
+section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child(3){animation-delay:.16s} section.view.on>*:nth-child(4){animation-delay:.24s} section.view.on>*:nth-child(n+5){animation-delay:.32s}
+.overlay.on .sheet{animation:revelar .7s var(--ease) both}
+@media (max-width:640px){ .brand small{right:0;font-size:1.45rem;bottom:-.3em} header.top .wrap{padding-top:52px} }
+@media (prefers-reduced-motion: reduce){ section.view.on>*, .brand h1, .brand small, .overlay.on .sheet{animation:none} #aura i{transition:none} }
+</style>
+</head>
+<body>
+<div id="aura" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<div id="login" style="position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(20,20,22,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)">
+  <form id="loginForm" class="sheet" style="max-width:380px;display:grid;gap:12px">
+    <h3 style="font-size:1.4rem">Entrar a Mi stock</h3>
+    <p class="meta" id="loginMsg">Solo para Braulio y Santiago.</p>
+    <label for="lgEmail">Correo<input id="lgEmail" type="email" autocomplete="username" required></label>
+    <label for="lgPass">Contraseña<input id="lgPass" type="password" autocomplete="current-password" required></label>
+    <button type="submit" id="lgBtn">Entrar</button>
+  </form>
+</div>
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><h1>Essence &amp; Co</h1><small>Centro de ventas · Mi stock</small></div>
+    <span id="savePill" class="pill plain">Cargando…</span><button id="btnSalir" class="small quiet" style="position:absolute;top:52px;right:16px;z-index:2;display:none">Salir</button>
+  </div>
+</header>
+<nav class="tabs" aria-label="Secciones">
+  <div class="wrap">
+    <a href="#hoy" data-v="hoy">Hoy</a>
+    <a href="#estados" data-v="estados">Por estado</a>
+    <a href="#aroma" data-v="aroma">Encuentra tu aroma</a>
+    <a href="#clientes" data-v="clientes">Clientes</a>
+    <a href="#ventas" data-v="ventas">Ventas por socio</a>
+    <a href="#socios" data-v="socios">Socios</a>
+    <a href="#compras" data-v="compras">Día de compra</a>
+    <a href="#mensajes" data-v="mensajes">Mensajes</a>
+    <a href="#calculadora" data-v="calculadora">Calculadora</a>
+    <a href="#catalogo" data-v="catalogo">Catálogo</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- HOY -->
+<section class="view" id="v-hoy">
+  <div class="row between"><h2>Hoy</h2><span class="meta" id="hoyFecha"></span></div>
+  <div class="tiles" id="hoyTiles"></div>
+  <div class="card">
+    <div class="row between"><h3>Mensajes pendientes</h3><span class="meta">Seguimientos de 7 y 21 días, y recordatorio a los 3 meses</span></div>
+    <div class="list" id="hoyTareas"></div>
+  </div>
+  <div class="card">
+    <div class="row between"><h3>Pedidos en proceso</h3><span class="meta">Lo que falta cobrar, comprar o entregar</span></div>
+    <div class="list" id="hoyPedidos"></div>
+  </div>
+  <div class="card" id="hoyCompra"></div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Garantías de rotación activas</h3>
+      <div class="list" id="hoyGarantias"></div>
+    </div>
+    <div class="card">
+      <h3>Qué vender este mes</h3>
+      <p id="hoyTemporada"></p>
+      <a class="btn ghost small" href="#estados">Ver recomendaciones por estado</a>
+    </div>
+  </div>
+</section>
+
+<!-- ESTADOS -->
+<section class="view" id="v-estados">
+  <h2>Recomendador por estado</h2>
+  <p class="lead">Elige el estado del cliente. La app toma en cuenta el clima del mes actual, la humedad, el nivel económico de la zona y qué tanto se vende cada perfume.</p>
+  <div class="card">
+    <div class="fields">
+      <label for="eEstado">Estado<select id="eEstado"></select></label>
+      <label for="eMes">Mes<select id="eMes"></select></label>
+      <label for="eGenero">Para<select id="eGenero"><option value="H">Solo hombre</option><option value="M">Solo mujer</option><option value="T">Hombre y mujer</option></select></label>
+      <label for="eLinea">Tipo de perfume<select id="eLinea"><option value="mix">Mixto (árabes y diseñador)</option><option value="A">Solo árabes</option><option value="D">Solo diseñador</option></select></label>
+      <label for="eTipo">Tipo de cliente<select id="eTipo"><option value="rev">Revendedor</option><option value="per">Uso personal</option></select></label>
+    </div>
+    <label class="row" style="font-weight:500;color:var(--ink);flex-wrap:nowrap"><input type="checkbox" id="eExtra" style="width:auto"> Incluir Cuba y body mists (última opción)</label>
+  </div>
+  <div id="estadoOut" style="display:grid;gap:16px"></div>
+</section>
+
+<!-- AROMA -->
+<section class="view" id="v-aroma">
+  <h2>Encuentra tu aroma</h2>
+  <div class="seg" role="group" aria-label="Tipo de cliente" style="justify-self:start">
+    <button data-am="uno" aria-pressed="true">Una pieza</button><button data-am="may" aria-pressed="false">Mayoreo</button>
+  </div>
+  <div id="aromaUno" style="display:grid;gap:16px">
+  <p class="lead">Para quien busca un perfume para él o para regalar. Hazle estas preguntas por WhatsApp y marca sus respuestas: te sugiero 3 perfumes y te armo el mensaje.</p>
+  <div class="card">
+    <div class="fields">
+      <label for="qPara">¿Para quién es?<select id="qPara"><option value="H">Hombre</option><option value="M">Mujer</option><option value="T">Le da igual (unisex)</option></select></label>
+      <label for="qEstilo">¿Qué estilo le gusta?<select id="qEstilo">
+        <option value="fresco">Fresco y limpio</option><option value="dulce">Dulce</option><option value="amaderado">Amaderado o especiado</option><option value="floral">Floral o frutal</option><option value="nose">No sabe</option></select></label>
+      <label for="qMomento">¿Cuándo lo va a usar?<select id="qMomento">
+        <option value="dia">Diario / de día</option><option value="oficina">Trabajo u oficina</option><option value="noche">Noche o fiesta</option><option value="cita">Citas</option></select></label>
+      <label for="qEstado">¿De qué estado es?<select id="qEstado"></select></label>
+      <label for="qPres">Presupuesto<select id="qPres"><option value="1">Accesible</option><option value="2" selected>Medio</option><option value="3">Premium</option></select></label>
+      <label for="qGusta">Un perfume que ya le guste (opcional)<select id="qGusta"><option value="">Ninguno</option></select></label>
+    </div>
+    <label for="qNombre">Nombre del cliente (para el mensaje)<input id="qNombre" placeholder="Ej. Karla"></label>
+  </div>
+  <div id="aromaOut" style="display:grid;gap:16px"></div>
+  </div>
+  <div id="aromaMay" style="display:none;gap:16px">
+  <p class="lead">Para quien quiere comprar varias piezas para revender. Te armo 7 propuestas distintas con tus precios de mayoreo según las piezas, la ganancia que tendría tu cliente y tu ganancia.</p>
+  <div class="card">
+    <div class="fields">
+      <label for="wModo">Armar por<select id="wModo"><option value="pres">Presupuesto del cliente</option><option value="pz">Número de piezas</option></select></label>
+      <label for="wMonto" id="wMontoL">Presupuesto ($)<input id="wMonto" type="number" inputmode="decimal" value="3000"></label>
+      <label for="wPiezas" id="wPiezasL" style="display:none">Piezas<select id="wPiezas"><option>5</option><option selected>10</option><option>15</option><option>20</option><option>25</option><option>30</option><option>50</option></select></label>
+      <label for="wEstado">Estado del cliente<select id="wEstado"></select></label>
+      <label for="wPara">Para<select id="wPara"><option value="T">Hombre y mujer</option><option value="H">Solo hombre</option><option value="M">Solo mujer</option></select></label>
+      <label for="wLinea">Tipo de perfume<select id="wLinea"><option value="mix">Mixto</option><option value="A">Solo árabes</option><option value="D">Solo diseñador</option></select></label>
+      <label for="wMax">Máximo de piezas por perfume<select id="wMax"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select></label>
+      <label for="wNivel">El cliente<select id="wNivel"><option value="nuevo">Va empezando</option><option value="exp">Ya vende perfumes</option></select></label>
+      <label for="wMargen">Ganancia sugerida para que revenda (%)<input id="wMargen" type="number" inputmode="decimal" value="30"></label>
+    </div>
+    <label for="wNombre">Nombre del cliente (para el mensaje)<input id="wNombre" placeholder="Ej. Mariana"></label>
+    <p class="note">Las piezas por perfume se limitan a las que tienes en stock. En presupuesto, la propuesta puede pasarse hasta $200 si conviene.</p>
+  </div>
+  <div id="mayOut" style="display:grid;gap:16px"></div>
+  </div>
+</section>
+
+<!-- CLIENTES -->
+<section class="view" id="v-clientes">
+  <div class="row between"><h2>Clientes y socios</h2><button id="btnNuevoCliente">Agregar cliente</button></div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row" style="align-items:center;gap:10px"><strong>¿Quién eres?</strong>
+      <div class="seg" role="group" aria-label="Quién eres"><button data-yo="Braulio" aria-pressed="false">Braulio</button><button data-yo="Santiago" aria-pressed="false">Santiago</button></div>
+      <span class="meta">Los clientes y pedidos que registres quedan como ventas tuyas en "Ventas por socio".</span></div>
+    <div class="row" style="align-items:center;gap:10px"><span class="meta">Ver clientes de:</span>
+      <div class="seg" role="group" aria-label="Ver clientes de"><button data-cv="todos" aria-pressed="true">Los dos</button><button data-cv="Braulio" aria-pressed="false">Braulio</button><button data-cv="Santiago" aria-pressed="false">Santiago</button></div></div>
+  </div>
+  <p class="lead">Niveles de socio por piezas acumuladas: Socio desde el primer pedido, Plata con 30 piezas y Oro con 75. La garantía de rotación de 30 días aplica solo en pedidos de 5 piezas o más que entregas en persona (clientes locales). A los locales les puedes dar el perfume y cobrarles a semanas; a los de fuera, registrar su envío y número de guía.</p>
+  <div class="row">
+    <input id="cBuscar" placeholder="Buscar por nombre, ciudad o estado" style="flex:1;min-width:200px">
+    <div class="seg" role="group" aria-label="Filtrar">
+      <button data-f="todos" aria-pressed="true">Todos</button><button data-f="rev" aria-pressed="false">Revendedores</button><button data-f="per" aria-pressed="false">Personales</button>
+    </div>
+  </div>
+  <div class="seg" role="group" aria-label="Filtrar por pedido" style="justify-self:start">
+    <button data-fp="todos" aria-pressed="true">Todos los pedidos</button><button data-fp="porEnviar" aria-pressed="false">Por entregar o enviar</button><button data-fp="enviados" aria-pressed="false">Ya enviados</button><button data-fp="semanas" aria-pressed="false">Pagando a semanas</button><button data-fp="liquidados" aria-pressed="false">Ya liquidaron</button>
+  </div>
+  <div class="list" id="cLista"></div>
+</section>
+
+<!-- VENTAS POR SOCIO -->
+<section class="view" id="v-ventas">
+  <h2>Ventas por socio</h2>
+  <p class="lead">Cada quien ve aquí sus ventas. El stock es uno solo para los dos: lo que vende Braulio o Santiago se descuenta de las mismas existencias, así que si se acaba un perfume aparece "Sin existencia" para ambos.</p>
+  <div class="card" style="display:grid;gap:8px">
+    <div class="row" style="align-items:center;gap:10px"><strong>Estás usando la app como:</strong>
+      <div class="seg" role="group" aria-label="Quién eres"><button data-yo="Braulio" aria-pressed="false">Braulio</button><button data-yo="Santiago" aria-pressed="false">Santiago</button></div></div>
+    <p class="meta" id="vSync"></p>
+  </div>
+  <div class="seg" role="group" aria-label="Socio" style="justify-self:start">
+    <button data-vs="Braulio" aria-pressed="true">Braulio</button><button data-vs="Santiago" aria-pressed="false">Santiago</button><button data-vs="todos" aria-pressed="false">Los dos</button>
+  </div>
+  <div class="tiles" id="vTiles"></div>
+  <div class="list" id="vLista"></div>
+</section>
+
+<!-- SOCIOS -->
+<section class="view" id="v-socios">
+  <h2>Socios Essence</h2>
+  <div class="card">
+    <h3>Cómo funciona</h3>
+    <p>El programa de socios es para tus <strong>revendedores</strong>. Sirve para que te sigan comprando a ti y no se vayan con otro proveedor por $10 menos: entre más piezas te compran en total, más beneficios tienen.</p>
+    <ul class="clean">
+      <li><strong>Las piezas se suman de todos sus pedidos.</strong> No tienen que comprar todo de golpe: 3 pedidos de 10 piezas cuentan como 30.</li>
+      <li><strong>Socio</strong> (desde su primer pedido): kit de inicio, asesoría por WhatsApp y, si es local, garantía de rotación en pedidos de 5 piezas o más.</li>
+      <li><strong>Socio Plata</strong> (30 piezas acumuladas): todo lo anterior, más 2 decants extra de regalo en cada pedido y prioridad cuando llegan novedades o hay poca existencia.</li>
+      <li><strong>Socio Oro</strong> (75 piezas acumuladas): todo lo anterior, más precio de 15–24 piezas aunque su pedido sea de 5 piezas o más, <strong>solo en los perfumes marcados como Oro</strong>. Son los que te siguen dejando al menos $60 y 10% de ganancia aunque los compres bajo pedido (puedes cambiarlos en Catálogo). La app aplica el precio sola al registrar su pedido.</li>
+      <li><strong>Los niveles no se pierden</strong>, pero si un socio lleva más de 30 días sin comprar, aquí te aviso para que le escribas.</li>
+    </ul>
+    <p class="note">Platícale a tu revendedor en qué nivel va y cuánto le falta: es la razón para que su siguiente pedido sea contigo. Cada socio tiene abajo un mensaje listo para mandarle.</p>
+  </div>
+  <div class="tiles" id="sTiles"></div>
+  <div class="list" id="sLista"></div>
+</section>
+
+<!-- COMPRAS -->
+<section class="view" id="v-compras">
+  <h2>Día de compra</h2>
+  <p class="lead">En lugar de comprarle a Ian cada pedido por separado, junta los pedidos pendientes de la semana y cómpralos el mismo día. Ian cobra según el total de piezas, así que entre más juntes, menos pagas por cada una.</p>
+  <div class="card">
+    <div class="fields"><label for="dcDia">Tu día de compra<select id="dcDia"><option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option><option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option></select></label></div>
+    <p class="meta" id="dcProx"></p>
+  </div>
+  <div id="dcOut" style="display:grid;gap:16px"></div>
+</section>
+
+<!-- MENSAJES -->
+<section class="view" id="v-mensajes">
+  <h2>Mensajes listos</h2>
+  <p class="lead">El guion de atención para WhatsApp. Elige el tipo de cliente, escribe su nombre y copia el mensaje que necesites.</p>
+  <div class="seg" role="group" aria-label="Tipo de cliente" style="justify-self:start">
+    <button data-mm="uno" aria-pressed="true">Una pieza</button><button data-mm="may" aria-pressed="false">Mayoreo</button>
+  </div>
+  <div class="card"><label for="mNombre">Nombre del cliente<input id="mNombre" placeholder="Ej. Luis"></label></div>
+  <div class="list" id="mLista"></div>
+  <div id="mSocios" style="display:none;gap:10px">
+    <h3 style="margin-top:8px">Programa de Socios</h3>
+    <p class="meta">Mensajes para explicarle el programa a tus revendedores y avisarles cuando suben de nivel.</p>
+    <div class="list" id="mSociosLista"></div>
+  </div>
+</section>
+
+<!-- CALCULADORA -->
+<section class="view" id="v-calculadora">
+  <h2>Calculadora de ganancia</h2>
+  <p class="lead">Calcula cuánto ganas por pedido con los descuentos de tu proveedor, y cuánto ganaría tu revendedor.</p>
+  <div class="card">
+    <div class="fields">
+      <label for="kPerf">Perfume (opcional)<select id="kPerf"><option value="">Escribir precios a mano</option></select></label>
+      <label for="kLista">Precio del proveedor por pieza (1 a 4 piezas)<input id="kLista" type="number" inputmode="decimal" value="350"></label>
+      <label for="kPiezas">Piezas del pedido<input id="kPiezas" type="number" inputmode="numeric" value="5"></label>
+      <label for="kVenta">Tu precio por pieza al cliente<input id="kVenta" type="number" inputmode="decimal" value="450"></label>
+      <label for="kEnvio">Tu costo de envío del pedido<input id="kEnvio" type="number" inputmode="decimal" value="0"></label>
+      <label for="kDecants">Decants de regalo (cuántos)<input id="kDecants" type="number" inputmode="numeric" value="3"></label>
+      <label for="kDecCosto">Costo por decant<input id="kDecCosto" type="number" inputmode="decimal" value="25"></label>
+      <label for="kRev">Precio al que revende tu cliente<input id="kRev" type="number" inputmode="decimal" value="650"></label>
+    </div>
+    <div class="res" id="kOut"></div>
+    <p class="note">Si eliges un perfume, tu precio y el precio de tu proveedor se llenan solos según las piezas. Descuentos de tu proveedor: 5–14 piezas 10%, 15–24 piezas 15%, 25–49 piezas 18%, 50–99 piezas 20%, 100 o más 22%. Los valores iniciales son de ejemplo: cámbialos por los tuyos.</p>
+  </div>
+</section>
+
+<!-- CATALOGO -->
+<section class="view" id="v-catalogo">
+  <div class="row between"><h2>Catálogo</h2><button id="btnNuevoPerf">Agregar perfume</button></div>
+  <p class="lead">Tus precios son los de tu catálogo actualizado (2 de noviembre de 2026). "Precio con tu regla" aplica tus márgenes al costo de hoy (35% abajo de $300, 20% de $300 a $700 con mínimo $100, 15% hasta $1,500 con mínimo $140, 10% hasta $2,500 con mínimo $225 y 8% arriba con mínimo $250) y te avisa cuál conviene subir. En "Precio de mercado" ya viene el precio de Framora (5 de noviembre de 2026) en los 61 perfumes que también vende; si anotas el de otra tienda, la app compara con ese. Te dice si estás arriba o abajo. Este catálogo es solo tu stock: los 49 perfumes que le compraste a Ian el 13 de noviembre de 2026 (nota NC-000116 más los 4 que faltaban en la nota). El costo es lo que pagaste por pieza y "Tienes" son las piezas que te quedan: se descuentan solas cuando registras un pedido. Lo que se acaba ya no se recomienda. "Precio con tu regla" calcula sobre lo que pagaste, así que te sugerirá precios más bajos; tus precios de venta siguen siendo los de siempre. "Precio Oro" marca los perfumes donde tus Socios Oro reciben el precio de 15–24 piezas; vienen marcados los que te dejan al menos $60 y 10% de ganancia aunque compres bajo pedido.</p>
+  <div class="row"><input id="pBuscar" placeholder="Buscar perfume" style="flex:1;min-width:200px">
+    <select id="pGenero" aria-label="Filtrar por género" style="width:auto"><option value="">Todos</option><option value="H">Hombre</option><option value="M">Mujer</option><option value="U">Unisex</option></select>
+    <select id="pTipo" aria-label="Filtrar por tipo" style="width:auto"><option value="">Todos los tipos</option><option value="A">Árabe</option><option value="D">Diseñador</option><option value="C">Cuba</option><option value="B">Body mist</option></select>
+    <label for="pEscala" style="width:auto">Ver precios de<select id="pEscala" style="width:auto"><option value="0">1–4 piezas</option><option value="1">5–14 piezas</option><option value="2">15–24 piezas</option><option value="3">25–49 piezas</option><option value="4">50–99 piezas</option><option value="5">100+ piezas</option></select></label>
+    <label class="row" style="font-weight:500;color:var(--ink);flex-wrap:nowrap;width:auto"><input type="checkbox" id="pOro" style="width:auto"> Solo perfumes con Precio Oro</label></div>
+  <p class="meta" id="pResumen"></p>
+  <div class="card scroll"><table class="t" id="pTabla"></table></div>
+  <p class="note">El estilo (fresco, dulce, etc.) lo calculé a partir de las notas de cada perfume. "Se compara con" indica el perfume de diseñador al que más se le parece según reseñas de usuarios; dilo así al cliente, sin decir que es el mismo.</p>
+</section>
+
+</main>
+
+<div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+const C = window.ESSENCE_CONFIG || {};
+const $l = id=>document.getElementById(id);
+const msg = (t,bad)=>{ const m=$l("loginMsg"); m.textContent=t; m.style.color = bad? "var(--bad)" : ""; };
+if(!C.url || !C.anonKey || C.url.includes("PEGAR")){ msg("Falta conectar la base de datos (config.js).", true); $l("lgBtn").disabled=true; throw new Error("sin config"); }
+const sb = createClient(C.url, C.anonKey, {auth:{persistSession:true, autoRefreshToken:true}});
+let arrancado=false;
+async function arrancar(session){
+  if(arrancado) return; arrancado=true;
+  const uid = session.user.id;
+  const [{data:cat, error:e1}, {data:perfil}] = await Promise.all([
+    sb.from("catalogo").select("data").eq("id","mi-stock").maybeSingle(),
+    sb.from("perfil").select("nombre").eq("id", uid).maybeSingle()]);
+  if(e1 || !cat){ arrancado=false; msg("No pude cargar el catálogo. Revisa que corriste el SQL de configuración.", true); return; }
+  window.__BASE__ = cat.data.base || [];
+  const nombre = perfil && perfil.nombre;
+  // adaptador: imita claude.use("db") y claude.use("user") con Supabase
+  let ultimaEscritura = 0, escribiendo = 0;
+  const filaADoc = r=>({id:r.id, exists:true, data:()=>r.data, metadata:{fromCache:false, hasPendingWrites: r.id===uid && (escribiendo>0 || Date.now()-ultimaEscritura<2500)}});
+  const db = {
+    doc(path){
+      const [col, id] = path.split("/").length===2? path.split("/") : [null,null];
+      return {
+        async get(){ if(col!=="equipo") return {exists:false, data:()=>undefined}; const {data} = await sb.from("equipo").select("id,data").eq("id",id).maybeSingle(); return data? filaADoc(data) : {exists:false, data:()=>undefined}; },
+        async set(d){ if(col!=="equipo" || id!==uid) throw {code:"invalid_argument"}; escribiendo++; try{ const {error} = await sb.from("equipo").upsert({id, data:d, updated_at:new Date().toISOString()}); if(error) throw {code: /permission|policy|JWT/i.test(error.message)? "invalid_argument" : "unavailable", message:error.message}; } finally { escribiendo--; ultimaEscritura=Date.now(); } }
+      };
+    },
+    collection(path){
+      return { onSnapshot(next, err){
+        let vivo=true;
+        const leer = async()=>{ const {data, error} = await sb.from("equipo").select("id,data"); if(!vivo) return; if(error){ return; } const docs=(data||[]).map(filaADoc); next({docs, size:docs.length, empty:!docs.length, metadata:{fromCache:false, hasPendingWrites:false}, docChanges:()=>[]}); };
+        leer();
+        const ch = sb.channel("equipo-cambios").on("postgres_changes", {event:"*", schema:"public", table:"equipo"}, ()=>leer()).subscribe();
+        const t = setInterval(leer, 30000);
+        addEventListener("visibilitychange", ()=>{ if(!document.hidden) leer(); });
+        return ()=>{ vivo=false; clearInterval(t); sb.removeChannel(ch); };
+      }};
+    }
+  };
+  const user = { id: async()=>uid, isOwner: async()=> nombre? nombre==="Braulio" : null };
+  window.claude = { use: async n=> n==="db"? db : n==="user"? user : null };
+  $l("login").remove();
+  const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
+  const sc=document.createElement("script"); sc.src="app.js?v="+(C.version||"1"); document.body.appendChild(sc);
+}
+$l("loginForm").addEventListener("submit", async ev=>{
+  ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");
+  const {data, error} = await sb.auth.signInWithPassword({email:$l("lgEmail").value.trim(), password:$l("lgPass").value});
+  $l("lgBtn").disabled=false;
+  if(error){ msg("Correo o contraseña incorrectos.", true); return; }
+  arrancar(data.session);
+});
+const {data:{session}} = await sb.auth.getSession();
+if(session) arrancar(session);
+</script>
+</body>
+</html>
