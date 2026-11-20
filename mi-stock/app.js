@@ -161,6 +161,8 @@ function waLink(tel, txt){ const n=String(tel||"").replace(/\D/g,""); if(!n) ret
 document.addEventListener("click", e=>{
   const b = e.target.closest("[data-copy]");
   if(b){ const src = document.getElementById(b.dataset.copy); if(src) copiar(src.textContent); }
+  const bf = e.target.closest("[data-notapdf],[data-notaxls]");
+  if(bf){ const [cid,pid] = (bf.dataset.notapdf||bf.dataset.notaxls).split("|"); const c = clientesVista().concat(S.borrados||[]).find(x=>x.id===cid); const p = c && (c.pedidos||[]).find(x=>x.id===pid); if(c&&p){ bf.disabled=true; (bf.dataset.notapdf? notaPDF(c,p) : notaExcel(c,p)).catch(err=>toast("No se pudo crear el archivo. Revisa tu conexión e inténtalo otra vez")).finally(()=>bf.disabled=false); } }
   const bn = e.target.closest("[data-copynota]");
   if(bn){ const [cid,pid] = bn.dataset.copynota.split("|"); const c = clientesVista().concat(S.borrados||[]).find(x=>x.id===cid); const p = c && (c.pedidos||[]).find(x=>x.id===pid); if(c&&p) copiarTabla(c,p); }
 });
@@ -374,6 +376,94 @@ function notaTabla(c, p){
   h += `</table>`;
   return {t, h};
 }
+/* ---- Nota como archivo (PDF o Excel) ---- */
+function cargarScript(src){ return new Promise((res,rej)=>{ if(document.querySelector(`script[data-lib="${src}"]`)) return res(); const sc=document.createElement("script"); sc.src=src; sc.dataset.lib=src; sc.onload=res; sc.onerror=()=>{ sc.remove(); rej(new Error("no cargó")); }; document.head.appendChild(sc); }); }
+const LIB = { jspdf:"https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js", autotable:"https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js", exceljs:"https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" };
+function datosNota(c, p){
+  const loc = entregaDe(c,p)==="local", s = saldo(p);
+  const its = (p.items||[]).length? p.items : (p.perfumes? [{q:p.piezas||1, n:p.perfumes, m:"", precio:(+p.subtotal||+p.total||0)/(p.piezas||1)}] : []);
+  const tot = [["Piezas", String(p.piezas)], ["Precio de", tierLabel(p.piezas)]];
+  if(p.subtotal!=null) tot.push(["Subtotal", money(p.subtotal)]);
+  if(+p.descuento) tot.push(["Descuento", "-"+money(p.descuento)]);
+  tot.push(["Envío", loc? "Entrega en persona" : (+p.envioCobrado? money(p.envioCobrado) : "Por cotizar según tu C.P.")]);
+  tot.push(["TOTAL", money(p.total), 1]);
+  if(pagado(p)) tot.push(["Pagado", money(pagado(p))]);
+  if(s>0) tot.push(["RESTA", money(s), 1]);
+  const extra = [];
+  if(loc && +p.semanas && s>0) extra.push(`Plan de pagos: ${p.semanas} semana${+p.semanas===1?"":"s"} de ${money(pagoSemanal(p))}. Próximo pago: ${fecha(proxCobro(c,p)||addDays(p.fechaEntrega||p.fecha,7))}.`);
+  if((p.abonos||[]).length) extra.push("Pagos registrados: " + [(+p.anticipo? `anticipo ${money(p.anticipo)}` : "")].concat(p.abonos.map(a=>`${fecha(a.fecha)} ${money(a.monto)}`)).filter(Boolean).join(" · ") + ".");
+  if(!loc && fueEnviado(p) && p.guia) extra.push(`Tu pedido va en camino por ${p.paqueteria||"paquetería"}. Número de guía: ${p.guia}`);
+  if(garantiaAplica(c,p)) extra.push(`Garantía de rotación: si en 30 días algún perfume sellado no se te vende, te lo cambio por otro del mismo precio (hasta el ${fecha(addDays(p.fecha,30))}).`);
+  const archivo = ("Pedido " + (c.nombre||"cliente") + " " + (p.fecha||hoyISO())).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9 _-]/g,"").trim().replace(/\s+/g,"-");
+  return {its, tot, extra, archivo, cliente:c.nombre||"Cliente", fechaTxt:fecha(p.fecha)+" "+String(p.fecha||hoyISO()).slice(0,4), lugar:[c.ciudad, (ESTADOS.find(e=>e[0]===c.estado)||[])[1]].filter(Boolean).join(", "), entrega: loc? "En persona" : "Paquetería"};
+}
+async function entregarArchivo(blob, nombre){
+  const f = new File([blob], nombre, {type: blob.type});
+  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({files:[f]})){
+    try{ await navigator.share({files:[f], title:nombre}); return; }catch(e){ if(e && e.name==="AbortError") return; }
+  }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nombre; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000); toast("Archivo listo: "+nombre);
+}
+async function notaPDF(c, p){
+  toast("Creando PDF…");
+  await cargarScript(LIB.jspdf); await cargarScript(LIB.autotable);
+  const d = datosNota(c, p), {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit:"mm", format:"a5"}), W = doc.internal.pageSize.getWidth(), M = 10;
+  const STORM=[58,58,60], CREAM=[242,230,216], GOLD=[140,106,63];
+  doc.setFillColor(...STORM); doc.rect(0,0,W,28,"F");
+  doc.setTextColor(...CREAM); doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.text("ESSENCE & CO", M, 15);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(201,164,110); doc.text("NOTA DE PEDIDO", M, 22);
+  doc.setTextColor(...CREAM); doc.text(d.fechaTxt, W-M, 22, {align:"right"});
+  doc.setTextColor(40,40,40); doc.setFontSize(10);
+  let y = 36;
+  doc.setFont("helvetica","bold"); doc.text("Cliente:", M, y); doc.setFont("helvetica","normal"); doc.text(d.cliente + (d.lugar? "  ·  "+d.lugar : ""), M+16, y);
+  y += 5; doc.setFont("helvetica","bold"); doc.text("Entrega:", M, y); doc.setFont("helvetica","normal"); doc.text(d.entrega, M+16, y);
+  doc.autoTable({ startY: y+5, margin:{left:M, right:M}, theme:"grid",
+    head:[["Cant","Perfume","Marca","Precio c/u","Importe"]],
+    body: d.its.map(it=>[it.q, it.n, it.m||"", money(it.precio), money(it.precio*it.q)]),
+    styles:{fontSize:8.5, cellPadding:2, lineColor:[210,200,188], lineWidth:.2, textColor:[40,40,40]},
+    headStyles:{fillColor:STORM, textColor:CREAM, fontStyle:"bold"},
+    alternateRowStyles:{fillColor:[248,244,238]},
+    columnStyles:{0:{halign:"center", cellWidth:12}, 3:{halign:"right", cellWidth:22}, 4:{halign:"right", cellWidth:22}} });
+  doc.autoTable({ startY: doc.lastAutoTable.finalY+3, margin:{left:W/2, right:M}, theme:"plain",
+    body: d.tot.map(r=>[r[0], r[1]]),
+    styles:{fontSize:9, cellPadding:1.4, textColor:[40,40,40]},
+    columnStyles:{1:{halign:"right"}},
+    didParseCell: h=>{ const r=d.tot[h.row.index]; if(r && r[2]){ h.cell.styles.fontStyle="bold"; h.cell.styles.fillColor=CREAM; h.cell.styles.textColor=STORM; } } });
+  y = doc.lastAutoTable.finalY + 6;
+  doc.setFontSize(8.5); doc.setTextColor(70,70,70);
+  d.extra.forEach(t=>{ const ls = doc.splitTextToSize(t, W-2*M); if(y + ls.length*4 > doc.internal.pageSize.getHeight()-16){ doc.addPage(); y = 14; } doc.text(ls, M, y); y += ls.length*4 + 2; });
+  const H = doc.internal.pageSize.getHeight();
+  doc.setDrawColor(...GOLD); doc.setLineWidth(.3); doc.line(M, H-14, W-M, H-14);
+  doc.setFontSize(9); doc.setTextColor(...GOLD); doc.setFont("helvetica","bold"); doc.text("¡Gracias por tu compra!", W/2, H-9, {align:"center"});
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(110,110,110); doc.text("Essence & Co  ·  WhatsApp 476 110 2899", W/2, H-5, {align:"center"});
+  await entregarArchivo(doc.output("blob"), d.archivo + ".pdf");
+}
+async function notaExcel(c, p){
+  toast("Creando Excel…");
+  await cargarScript(LIB.exceljs);
+  const d = datosNota(c, p), wb = new ExcelJS.Workbook(), ws = wb.addWorksheet("Pedido", {views:[{showGridLines:false}]});
+  ws.columns = [{width:8},{width:38},{width:18},{width:14},{width:14}];
+  const STORM="FF3A3A3C", CREAM="FFF2E6D8", GOLD="FF8C6A3F", borde={top:{style:"thin",color:{argb:"FFD2C8BC"}},left:{style:"thin",color:{argb:"FFD2C8BC"}},bottom:{style:"thin",color:{argb:"FFD2C8BC"}},right:{style:"thin",color:{argb:"FFD2C8BC"}}};
+  ws.mergeCells("A1:E1"); const t=ws.getCell("A1"); t.value="ESSENCE & CO · Nota de pedido"; t.font={bold:true,size:16,color:{argb:CREAM}}; t.fill={type:"pattern",pattern:"solid",fgColor:{argb:STORM}}; t.alignment={vertical:"middle"}; ws.getRow(1).height=30;
+  ws.addRow([]); ws.addRow(["Cliente", d.cliente + (d.lugar? " · "+d.lugar : "")]); ws.addRow(["Fecha", d.fechaTxt]); ws.addRow(["Entrega", d.entrega]);
+  [3,4,5].forEach(r=>{ ws.getCell("A"+r).font={bold:true,color:{argb:GOLD}}; });
+  ws.addRow([]);
+  const hr = ws.addRow(["Cant.","Perfume","Marca","Precio c/u","Importe"]);
+  hr.eachCell(cl=>{ cl.font={bold:true,color:{argb:CREAM}}; cl.fill={type:"pattern",pattern:"solid",fgColor:{argb:STORM}}; cl.border=borde; cl.alignment={horizontal:"center"}; });
+  const fmt = '"$"#,##0';
+  d.its.forEach((it,i)=>{ const r = ws.addRow([+it.q, it.n, it.m||"", +it.precio, null]); r.getCell(5).value = {formula:`A${r.number}*D${r.number}`, result: it.q*it.precio};
+    r.eachCell({includeEmpty:true}, (cl,ci)=>{ cl.border=borde; if(i%2) cl.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF8F4EE"}}; if(ci>=4) cl.numFmt=fmt; if(ci===1) cl.alignment={horizontal:"center"}; if(ci===2) cl.alignment={wrapText:true}; }); });
+  ws.addRow([]);
+  d.tot.forEach(rw=>{ const num = /^-?\$[\d,]+(\.\d+)?$/.test(rw[1])? Number(rw[1].replace(/[$,]/g,"")) : (rw[0]==="Piezas"? +rw[1] : rw[1]); const r = ws.addRow(["","","",rw[0], num]); if(typeof num==="number" && rw[0]!=="Piezas") r.getCell(5).numFmt='"$"#,##0'; r.getCell(5).alignment={horizontal:"right"};
+    if(rw[2]){ [4,5].forEach(ci=>{ const cl=r.getCell(ci); cl.font={bold:true,color:{argb:STORM}}; cl.fill={type:"pattern",pattern:"solid",fgColor:{argb:CREAM}}; }); } else r.getCell(4).font={color:{argb:"FF555555"}}; });
+  if(d.extra.length){ ws.addRow([]); d.extra.forEach(x=>{ const r=ws.addRow([x]); ws.mergeCells(`A${r.number}:E${r.number}`); r.getCell(1).alignment={wrapText:true,vertical:"top"}; r.height = 15*Math.ceil(x.length/95); r.getCell(1).font={size:10,color:{argb:"FF555555"}}; }); }
+  ws.addRow([]); const g = ws.addRow(["¡Gracias por tu compra! · Essence & Co · WhatsApp 476 110 2899"]); ws.mergeCells(`A${g.number}:E${g.number}`); g.getCell(1).font={bold:true,color:{argb:GOLD}}; g.getCell(1).alignment={horizontal:"center"};
+  ws.pageSetup = {paperSize:9, orientation:"portrait", fitToPage:true, fitToWidth:1, fitToHeight:0, margins:{left:.4,right:.4,top:.5,bottom:.5,header:.2,footer:.2}};
+  const buf = await wb.xlsx.writeBuffer();
+  await entregarArchivo(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), d.archivo + ".xlsx");
+}
 async function copiarTabla(c, p){
   const {t, h} = notaTabla(c, p);
   try{
@@ -583,7 +673,7 @@ function renderClientes(){
         ${(p.abonos||[]).length? `<div class="meta">Pagos: anticipo ${money(p.anticipo||0)} · ${p.abonos.map(a=>`${fecha(a.fecha)} ${money(a.monto)}`).join(" · ")}</div>`:""}
         ${p.ganancia!=null?`<div class="meta">Tu ganancia: ${money(p.ganancia)}</div>`:""}
         <div class="msg" id="${nid}" style="display:none">${esc(notaTabla(c,p).t)}</div>
-        <div class="row"><button class="small ghost" data-copynota="${c.id}|${p.id}">Copiar nota para el cliente</button>${c.ejemplo?"":`${s>0?`<button class="small" data-abono="${c.id}|${p.id}">Registrar pago</button>`:""}<button class="small quiet" data-editped="${c.id}|${p.id}">Editar</button><button class="small quiet" data-delped="${c.id}|${p.id}">Cancelar pedido</button>`}</div>
+        <div class="row"><button class="small ghost" data-copynota="${c.id}|${p.id}">Copiar nota</button><button class="small ghost" data-notapdf="${c.id}|${p.id}">Nota en PDF</button><button class="small ghost" data-notaxls="${c.id}|${p.id}">Nota en Excel</button>${c.ejemplo?"":`${s>0?`<button class="small" data-abono="${c.id}|${p.id}">Registrar pago</button>`:""}<button class="small quiet" data-editped="${c.id}|${p.id}">Editar</button><button class="small quiet" data-delped="${c.id}|${p.id}">Cancelar pedido</button>`}</div>
       </div>`;}).join("");
     return `<div class="item ${c.ejemplo?"example":""}">
       <div class="row between"><strong style="font-size:1.05rem">${esc(c.nombre)}</strong><span class="row" style="gap:6px">${c.ejemplo?"":`<span class="pill plain">Cliente de ${esc(vendCliente(c))}</span>`}<span class="pill ${nv.cls}">${nv.t}</span></span></div>
