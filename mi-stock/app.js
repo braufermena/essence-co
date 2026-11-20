@@ -161,6 +161,8 @@ function waLink(tel, txt){ const n=String(tel||"").replace(/\D/g,""); if(!n) ret
 document.addEventListener("click", e=>{
   const b = e.target.closest("[data-copy]");
   if(b){ const src = document.getElementById(b.dataset.copy); if(src) copiar(src.textContent); }
+  const bn = e.target.closest("[data-copynota]");
+  if(bn){ const [cid,pid] = bn.dataset.copynota.split("|"); const c = clientesVista().concat(S.borrados||[]).find(x=>x.id===cid); const p = c && (c.pedidos||[]).find(x=>x.id===pid); if(c&&p) copiarTabla(c,p); }
 });
 
 function perfumes(){ return BASE.concat(S.extra||[]); }
@@ -325,6 +327,62 @@ function notaPedido(c, p){
   if(!loc && fueEnviado(p) && p.guia) t += `\n\nTu pedido ya va en camino por ${p.paqueteria||"paquetería"}. Número de guía: ${p.guia}`;
   if(garantiaAplica(c,p)) t += `\n\nComo te lo entrego en persona, si en 30 días algún perfume sellado no se te vende, te lo cambio por otro del mismo precio (hasta el ${fecha(addDays(p.fecha,30))}).`;
   return t + `\n\n¡Gracias por tu compra!`;
+}
+/* Nota en forma de tabla: en WhatsApp sale como cuadrícula (texto monoespaciado) y en Excel/Sheets se pega en celdas */
+function notaTabla(c, p){
+  const W = 32, loc = entregaDe(c,p)==="local", s = saldo(p);
+  const pad = (t,n)=>{ t=String(t); return t.length>=n? t.slice(0,n) : t+" ".repeat(n-t.length); };
+  const lpad = (t,n)=>{ t=String(t); return t.length>=n? t : " ".repeat(n-t.length)+t; };
+  const corta = (t,n)=>{ const ws=String(t).split(/\s+/), out=[]; let l=""; ws.forEach(w=>{ while(w.length>n){ if(l){ out.push(l); l=""; } out.push(w.slice(0,n)); w=w.slice(n); } if(!w) return; if((l?l+" "+w:w).length>n){ out.push(l); l=w; } else l = l? l+" "+w : w; }); if(l) out.push(l); return out.length? out : [""]; };
+  const linea = ch=>ch.repeat(W);
+  const fila = (izq,der)=> pad(izq, W-String(der).length-1)+" "+der;
+  const its = (p.items||[]).length? p.items : (p.perfumes? [{q:p.piezas||1, n:p.perfumes, m:"", precio:(+p.subtotal||+p.total||0)/(p.piezas||1)}] : []);
+  let L = [];
+  L.push(pad("CANT",4)+" "+pad("PERFUME",18)+" "+lpad("IMPORTE",8));
+  L.push(linea("─"));
+  its.forEach(it=>{
+    const nom = corta(it.n, 18);
+    L.push(lpad(it.q,3)+"  "+pad(nom[0],18)+" "+lpad(money(it.precio*it.q),8));
+    nom.slice(1).forEach(x=>L.push("     "+x));
+    L.push("     "+pad(((it.m? it.m+" · ":"")+money(it.precio)+" c/u"),27));
+  });
+  L.push(linea("─"));
+  L.push(fila("Piezas", String(p.piezas)));
+  L.push(fila("Precio de", tierLabel(p.piezas)));
+  if(p.subtotal!=null) L.push(fila("Subtotal", money(p.subtotal)));
+  if(+p.descuento) L.push(fila("Descuento", "-"+money(p.descuento)));
+  L.push(fila("Envío", loc? "En persona" : (+p.envioCobrado? money(p.envioCobrado) : "Por cotizar")));
+  L.push(linea("═"));
+  L.push(fila("TOTAL", money(p.total)));
+  if(pagado(p)) L.push(fila("Pagado", money(pagado(p))));
+  if(s>0) L.push(fila("RESTA", money(s)));
+  let t = `¡Hola ${primerNombre(c)}! Este es tu pedido de Essence & Co (${fecha(p.fecha)}):\n\n\`\`\`\n${L.map(x=>x.replace(/\s+$/,"")).join("\n")}\n\`\`\``;
+  let extra = [];
+  if(loc && +p.semanas && s>0) extra.push(`Plan de pagos: ${p.semanas} semana${+p.semanas===1?"":"s"} de ${money(pagoSemanal(p))}. Próximo pago: ${fecha(proxCobro(c,p)||addDays(p.fechaEntrega||p.fecha,7))}.`);
+  if(!loc && fueEnviado(p) && p.guia) extra.push(`Tu pedido ya va en camino por ${p.paqueteria||"paquetería"}. Número de guía: ${p.guia}`);
+  if(garantiaAplica(c,p)) extra.push(`Como te lo entrego en persona, si en 30 días algún perfume sellado no se te vende, te lo cambio por otro del mismo precio (hasta el ${fecha(addDays(p.fecha,30))}).`);
+  t += (extra.length? "\n\n"+extra.join("\n\n") : "") + `\n\n¡Gracias por tu compra!`;
+  // versión para Excel / Google Sheets
+  const td = (v,al)=>`<td style="border:1px solid #999;padding:4px 8px;${al?"text-align:right;":""}">${esc(v)}</td>`;
+  const th = v=>`<th style="border:1px solid #999;padding:4px 8px;background:#3A3A3C;color:#F2E6D8">${esc(v)}</th>`;
+  let h = `<table style="border-collapse:collapse;font-family:Arial;font-size:11pt"><tr><td colspan="5"><b>Essence &amp; Co · Pedido de ${esc(c.nombre)} · ${esc(fecha(p.fecha))}</b></td></tr><tr>${th("Cantidad")}${th("Perfume")}${th("Marca")}${th("Precio c/u")}${th("Importe")}</tr>`;
+  its.forEach(it=>{ h += `<tr>${td(it.q,1)}${td(it.n)}${td(it.m||"")}${td(money(it.precio),1)}${td(money(it.precio*it.q),1)}</tr>`; });
+  const tot = (k,v,b)=>{ h += `<tr><td colspan="3"></td>${td(b? k.toUpperCase():k)}<td style="border:1px solid #999;padding:4px 8px;text-align:right;${b?"font-weight:bold;":""}">${esc(v)}</td></tr>`; };
+  tot("Piezas", String(p.piezas)); if(p.subtotal!=null) tot("Subtotal", money(p.subtotal)); if(+p.descuento) tot("Descuento", "-"+money(p.descuento));
+  tot("Envío", loc? "En persona" : (+p.envioCobrado? money(p.envioCobrado) : "Por cotizar")); tot("Total", money(p.total), 1);
+  if(pagado(p)) tot("Pagado", money(pagado(p))); if(s>0) tot("Resta", money(s), 1);
+  h += `</table>`;
+  return {t, h};
+}
+async function copiarTabla(c, p){
+  const {t, h} = notaTabla(c, p);
+  try{
+    if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
+      await navigator.clipboard.write([new ClipboardItem({"text/plain": new Blob([t],{type:"text/plain"}), "text/html": new Blob([h],{type:"text/html"})})]);
+      toast("Nota copiada: pégala en WhatsApp o en Excel"); return;
+    }
+  }catch(e){}
+  copiar(t);
 }
 function formAbono(c, p){
   const sug = Math.min(saldo(p), pagoSemanal(p) || saldo(p));
@@ -524,8 +582,8 @@ function renderClientes(){
         ${!loc && fueEnviado(p)? `<div class="meta">Enviado${p.fechaEnvio?" el "+fecha(p.fechaEnvio):""} por ${esc(p.paqueteria||"paquetería")}${p.guia?` · Guía: <strong style="color:var(--ink)">${esc(p.guia)}</strong>`:" · falta número de guía"}</div>`:""}
         ${(p.abonos||[]).length? `<div class="meta">Pagos: anticipo ${money(p.anticipo||0)} · ${p.abonos.map(a=>`${fecha(a.fecha)} ${money(a.monto)}`).join(" · ")}</div>`:""}
         ${p.ganancia!=null?`<div class="meta">Tu ganancia: ${money(p.ganancia)}</div>`:""}
-        <div class="msg" id="${nid}" style="display:none">${esc(notaPedido(c,p))}</div>
-        <div class="row"><button class="small ghost" data-copy="${nid}">Copiar nota para el cliente</button>${c.ejemplo?"":`${s>0?`<button class="small" data-abono="${c.id}|${p.id}">Registrar pago</button>`:""}<button class="small quiet" data-editped="${c.id}|${p.id}">Editar</button><button class="small quiet" data-delped="${c.id}|${p.id}">Cancelar pedido</button>`}</div>
+        <div class="msg" id="${nid}" style="display:none">${esc(notaTabla(c,p).t)}</div>
+        <div class="row"><button class="small ghost" data-copynota="${c.id}|${p.id}">Copiar nota para el cliente</button>${c.ejemplo?"":`${s>0?`<button class="small" data-abono="${c.id}|${p.id}">Registrar pago</button>`:""}<button class="small quiet" data-editped="${c.id}|${p.id}">Editar</button><button class="small quiet" data-delped="${c.id}|${p.id}">Cancelar pedido</button>`}</div>
       </div>`;}).join("");
     return `<div class="item ${c.ejemplo?"example":""}">
       <div class="row between"><strong style="font-size:1.05rem">${esc(c.nombre)}</strong><span class="row" style="gap:6px">${c.ejemplo?"":`<span class="pill plain">Cliente de ${esc(vendCliente(c))}</span>`}<span class="pill ${nv.cls}">${nv.t}</span></span></div>
