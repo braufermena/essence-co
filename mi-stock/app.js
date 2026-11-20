@@ -71,7 +71,9 @@ function lsGet(){ try{ const r = localStorage.getItem(LS_KEY); return r? JSON.pa
 function lsSet(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); return true; }catch(e){ return false; } }
 function setPill(txt, cls){ const p = document.getElementById("savePill"); p.textContent = txt; p.className = "pill " + (cls||""); }
 let saveTimer = null;
+const SOLO_CONSULTA = !window.__BASE__;
 function save(){
+  if(SOLO_CONSULTA){ toast("Esta versión es solo de consulta: registra los cambios en la página de GitHub"); setTimeout(()=>location.reload(), 1800); return; }
   lsSet();
   if(saveMode !== "db"){ setPill(lsSet()? "Guardado en este navegador" : "Sin guardar", lsSet()? "warn":"bad"); return; }
   clearTimeout(saveTimer);
