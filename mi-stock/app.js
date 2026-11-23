@@ -937,7 +937,7 @@ const CAT_GASTO = ["Envíos y paquetería","Empaque y etiquetas","Publicidad","T
 const PAGADOR = ["Caja del negocio","Braulio","Santiago"];
 function finz(){ S.finanzas = S.finanzas || {}; ["gastos","pagosIan","restocks"].forEach(k=>{ if(!Array.isArray(S.finanzas[k])) S.finanzas[k]=[]; }); return S.finanzas; }
 function todasFin(){ const out={gastos:[],pagosIan:[],restocks:[]}; const add=(f,quien,mio)=>{ if(!f) return; ["gastos","pagosIan","restocks"].forEach(k=>(f[k]||[]).forEach(x=>{ if(x) out[k].push(Object.assign({_quien:quien, _mio:mio}, x)); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
-function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
+function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).filter(r=>r&&!r.yaEnStock).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
 function pagadoRestock(r, pagos){ return pagos.filter(p=>p.restock===r.id).reduce((a,p)=>a+(+p.monto||0),0); }
 function estadoRestock(r, pagos){
   const total=+r.total||0, pag=pagadoRestock(r,pagos), resta=Math.max(0,total-pag), sem=+r.semanas||0;
@@ -976,7 +976,7 @@ function renderGastos(){
     const pz = (r.items||[]).reduce((a,i)=>a+(+i.q||0),0);
     return `<div class="item ${e.resta<=0?"okk": e.atrasado?"due":"soon"}" style="display:grid;gap:6px">
       <div class="row between"><strong>Restock del ${fecha(r.fecha)} · ${pz} pieza${pz===1?"":"s"}</strong><span class="pill ${e.resta<=0?"good": e.atrasado?"bad":"warn"}">${e.resta<=0? "Pagado" : e.atrasado? "Pago atrasado" : "Debemos "+money(e.resta)}</span></div>
-      <div class="meta">${esc((r.items||[]).map(i=>i.q+" × "+i.n).join(", "))}</div>
+      <div class="meta">${r.yaEnStock? "Compra del stock inicial: estas piezas ya estaban en tu inventario. " : ""}${esc((r.items||[]).map(i=>i.q+" × "+i.n).join(", "))}</div>
       <div class="prog"><i style="width:${pct}%"></i></div>
       <div class="row between" style="flex-wrap:wrap;gap:6px"><span class="num">Total ${money(e.total)} · pagado ${money(e.pag)} · resta <strong>${money(e.resta)}</strong></span>
         <span class="meta">${e.sem? `${e.sem} semana${e.sem===1?"":"s"} de ${money(e.semanal)}` : "De contado"}${e.prox? ` · próximo pago ${fecha(e.prox)} por ${money(e.proxMonto)}` : ""}</span></div>
