@@ -330,6 +330,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
     <a href="#aroma" data-v="aroma">Encuentra tu aroma</a>
     <a href="#clientes" data-v="clientes">Clientes</a>
     <a href="#ventas" data-v="ventas">Ventas por socio</a>
+    <a href="#gastos" data-v="gastos">Gastos y Ian</a>
     <a href="#socios" data-v="socios">Socios</a>
     <a href="#compras" data-v="compras">Día de compra</a>
     <a href="#mensajes" data-v="mensajes">Mensajes</a>
@@ -450,6 +451,31 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
   <div class="list" id="cLista"></div>
 </section>
 
+<!-- GASTOS Y PAGOS A IAN -->
+<section class="view" id="v-gastos">
+  <h2>Gastos y pagos a Ian</h2>
+  <p class="lead">Aquí anotan en qué se gasta el dinero del negocio, cuánto le pagan a Ian y lo que se le debe de cada restock. Lo ven los dos.</p>
+  <div class="tiles" id="gTiles"></div>
+  <div class="row" style="gap:8px;flex-wrap:wrap">
+    <button id="btnGasto">Registrar gasto</button>
+    <button id="btnPagoIan" class="ghost">Registrar pago a Ian</button>
+    <button id="btnRestock" class="ghost">Agregar restock</button>
+  </div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row between"><h3>Lo que le debemos a Ian</h3><span class="meta" id="gDeudaTxt"></span></div>
+    <div class="list" id="gRestocks"></div>
+  </div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row between"><h3>Pagos a Ian</h3><span class="meta" id="gPagosTxt"></span></div>
+    <div class="list" id="gPagos"></div>
+  </div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Gastos</h3>
+      <div class="row" style="gap:8px;align-items:center"><label for="gMes" class="meta" style="text-transform:none;letter-spacing:0">Mes</label><select id="gMes" style="width:auto"></select></div></div>
+    <div class="list" id="gGastos"></div>
+  </div>
+</section>
+
 <!-- VENTAS POR SOCIO -->
 <section class="view" id="v-ventas">
   <h2>Ventas por socio</h2>
@@ -551,7 +577,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795471631"></script>
+<script src="config.js?b=1795472672"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -597,9 +623,10 @@ async function arrancar(session){
   };
   const user = { id: async()=>uid, isOwner: async()=> nombre? nombre==="Braulio" : null };
   window.claude = { use: async n=> n==="db"? db : n==="user"? user : null };
+  window.__SB__ = sb; window.__UID__ = uid;
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795471631"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795472672"; document.body.appendChild(sc);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");

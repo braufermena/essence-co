@@ -72,6 +72,14 @@ function lsSet(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); return t
 function setPill(txt, cls){ const p = document.getElementById("savePill"); p.textContent = txt; p.className = "pill " + (cls||""); }
 let saveTimer = null, saveTimerVivo = false;
 const SOLO_CONSULTA = !window.__BASE__;
+async function saveFinanzas(){
+  S.finanzas = finz();
+  if(!SOLO_CONSULTA){ save(); return; }
+  lsSet();
+  if(!dbRef){ return; }
+  try{ setPill("Guardando…","plain"); await dbRef.update({finanzas:S.finanzas, extra:S.extra||[]}); setPill("Guardado en tu cuenta","good"); }
+  catch(e){ setPill("No se pudo guardar","bad"); }
+}
 function save(){
   if(SOLO_CONSULTA){ toast("Esta versión es solo de consulta: registra los cambios en la página de GitHub"); setTimeout(()=>location.reload(), 1800); return; }
   lsSet();
@@ -87,7 +95,7 @@ async function flush(){
   if(saving){ pending = true; return; }
   saving = true;
   try{
-    await dbRef.set({clientes:S.clientes, borrados:S.borrados||[], cat:S.cat, extra:S.extra, cfg:S.cfg||{}, persona:yo(), actualizado:new Date().toISOString()});
+    await dbRef.set({clientes:S.clientes, borrados:S.borrados||[], finanzas:finz(), cat:S.cat, extra:S.extra, cfg:S.cfg||{}, persona:yo(), actualizado:new Date().toISOString()});
     setPill("Guardado en tu cuenta","good");
   }catch(e){
     if(e && e.code === "unavailable"){ await new Promise(r=>setTimeout(r, 800+Math.random()*800)); saving=false; return flush(); }
@@ -102,7 +110,7 @@ let OTROS = {}, MI_UID = null, ES_DUENO = null, migrado = false, remotoPendiente
 function saveTimer_activo(){ return !!saveTimerVivo; }
 const SOCIOS_EQ = ["Braulio","Santiago"];
 function yo(){ return (S.cfg&&S.cfg.persona) || (ES_DUENO===false? "Santiago" : "Braulio"); }
-function cargarS(d){ S = {clientes: JSON.parse(JSON.stringify(d.clientes||[])), borrados: JSON.parse(JSON.stringify(d.borrados||[])), cat: JSON.parse(JSON.stringify(d.cat||{})), extra: JSON.parse(JSON.stringify(d.extra||[])), cfg: JSON.parse(JSON.stringify(d.cfg||{diaCompra:4}))}; }
+function cargarS(d){ S = {finanzas: JSON.parse(JSON.stringify(d.finanzas||{gastos:[],pagosIan:[],restocks:[]})), clientes: JSON.parse(JSON.stringify(d.clientes||[])), borrados: JSON.parse(JSON.stringify(d.borrados||[])), cat: JSON.parse(JSON.stringify(d.cat||{})), extra: JSON.parse(JSON.stringify(d.extra||[])), cfg: JSON.parse(JSON.stringify(d.cfg||{diaCompra:4}))}; }
 async function initStore(){
   const local = lsGet();
   if(local){ S = Object.assign({clientes:[],cat:{},extra:[],cfg:{diaCompra:4}}, local); }
@@ -175,7 +183,7 @@ document.addEventListener("click", e=>{
   if(bn){ const [cid,pid] = bn.dataset.copynota.split("|"); const c = clientesVista().concat(S.borrados||[]).find(x=>x.id===cid); const p = c && (c.pedidos||[]).find(x=>x.id===pid); if(c&&p) copiarTabla(c,p); }
 });
 
-function perfumes(){ return BASE.concat(S.extra||[]); }
+function perfumes(){ const ids=new Set(BASE.map(p=>p.id).concat((S.extra||[]).map(p=>p.id))); const otros=[]; Object.values(OTROS).forEach(d=>((d&&d.extra)||[]).forEach(p=>{ if(p&&p.id&&!ids.has(p.id)){ ids.add(p.id); otros.push(p); } })); return BASE.concat(S.extra||[], otros); }
 function catDueno(){ const d = Object.values(OTROS).find(x=>x&&x.persona==="Braulio"); return (d&&d.cat)||{}; }
 function info(p){ return S.cat[p.id] || (yo()!=="Braulio"? catDueno()[p.id] : null) || {}; }
 function costoDe(p, pz){ const o=info(p).costo; const t=tierIdx(pz||1); if(o) return o*(1-[0,.10,.15,.18,.20,.22][t]); return p.costo? p.costo[t] : 0; }
@@ -923,6 +931,272 @@ document.addEventListener("click", e=>{
   save(); renderAll(); toast("Cliente restaurado");
 });
 
+
+/* ===================== GASTOS, PAGOS A IAN Y RESTOCK ===================== */
+const CAT_GASTO = ["Envíos y paquetería","Empaque y etiquetas","Publicidad","Transporte y gasolina","Sueldos","Decants y frascos","Comisiones","Otro"];
+const PAGADOR = ["Caja del negocio","Braulio","Santiago"];
+function finz(){ S.finanzas = S.finanzas || {}; ["gastos","pagosIan","restocks"].forEach(k=>{ if(!Array.isArray(S.finanzas[k])) S.finanzas[k]=[]; }); return S.finanzas; }
+function todasFin(){ const out={gastos:[],pagosIan:[],restocks:[]}; const add=(f,quien,mio)=>{ if(!f) return; ["gastos","pagosIan","restocks"].forEach(k=>(f[k]||[]).forEach(x=>{ if(x) out[k].push(Object.assign({_quien:quien, _mio:mio}, x)); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
+function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
+function pagadoRestock(r, pagos){ return pagos.filter(p=>p.restock===r.id).reduce((a,p)=>a+(+p.monto||0),0); }
+function estadoRestock(r, pagos){
+  const total=+r.total||0, pag=pagadoRestock(r,pagos), resta=Math.max(0,total-pag), sem=+r.semanas||0;
+  const semanal = sem? (+r.pagoSemanal || Math.ceil((total-(+r.anticipo||0))/sem)) : resta;
+  const inicio = r.primerPago || addDays(r.fecha, 7);
+  const pagadoPlan = Math.max(0, pag-(+r.anticipo||0));
+  const n = semanal>0? Math.floor(pagadoPlan/semanal + 1e-6) : 0;
+  const prox = resta<=0? null : (sem? addDays(inicio, 7*Math.min(n, sem-1)) : inicio);
+  const proxMonto = resta<=0? 0 : Math.min(resta, semanal || resta);
+  const atrasado = prox && diffDays(prox, hoyISO())<0;
+  return {total, pag, resta, semanal, prox, proxMonto, atrasado, sem};
+}
+let gMesSel = null;
+function renderGastos(){
+  if(!$("#v-gastos")) return;
+  const F = todasFin(), hoy = hoyISO(), mes = hoy.slice(0,7);
+  if(!gMesSel) gMesSel = mes;
+  const meses = [...new Set([mes].concat(F.gastos.map(g=>(g.fecha||"").slice(0,7)).filter(Boolean)))].sort().reverse();
+  const nomMes = m=>{ const d=new Date(m+"-15T12:00:00"); return d.toLocaleDateString("es-MX",{month:"long",year:"numeric"}); };
+  $("#gMes").innerHTML = meses.map(m=>`<option value="${m}" ${m===gMesSel?"selected":""}>${nomMes(m)}</option>`).join("");
+  const gMes = F.gastos.filter(g=>(g.fecha||"").startsWith(gMesSel)).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+  const deudas = F.restocks.map(r=>({r, e:estadoRestock(r, F.pagosIan)}));
+  const deuda = deudas.reduce((a,x)=>a+x.e.resta,0);
+  const proxs = deudas.filter(x=>x.e.prox).sort((a,b)=>a.e.prox.localeCompare(b.e.prox));
+  const pagMes = F.pagosIan.filter(p=>(p.fecha||"").startsWith(mes)).reduce((a,p)=>a+(+p.monto||0),0);
+  const pagTot = F.pagosIan.reduce((a,p)=>a+(+p.monto||0),0);
+  $("#gTiles").innerHTML = [
+    [money(F.gastos.filter(g=>(g.fecha||"").startsWith(mes)).reduce((a,g)=>a+(+g.monto||0),0)), "gastos este mes"],
+    [money(pagMes), "pagado a Ian este mes"],
+    [money(deuda), "le debemos a Ian"],
+    [proxs[0]? money(proxs[0].e.proxMonto) : "—", proxs[0]? `próximo pago · ${fecha(proxs[0].e.prox)}${proxs[0].e.atrasado?" (atrasado)":""}` : "sin pagos pendientes"]
+  ].map(([v,t])=>`<div class="tile"><b>${v}</b><span>${t}</span></div>`).join("");
+  $("#gDeudaTxt").textContent = deuda? `Total pendiente ${money(deuda)}` : "";
+  $("#gRestocks").innerHTML = deudas.length? deudas.sort((a,b)=>(b.r.fecha||"").localeCompare(a.r.fecha||"")).map(({r,e})=>{
+    const pct = e.total? Math.min(100, Math.round(e.pag/e.total*100)) : 100;
+    const pz = (r.items||[]).reduce((a,i)=>a+(+i.q||0),0);
+    return `<div class="item ${e.resta<=0?"okk": e.atrasado?"due":"soon"}" style="display:grid;gap:6px">
+      <div class="row between"><strong>Restock del ${fecha(r.fecha)} · ${pz} pieza${pz===1?"":"s"}</strong><span class="pill ${e.resta<=0?"good": e.atrasado?"bad":"warn"}">${e.resta<=0? "Pagado" : e.atrasado? "Pago atrasado" : "Debemos "+money(e.resta)}</span></div>
+      <div class="meta">${esc((r.items||[]).map(i=>i.q+" × "+i.n).join(", "))}</div>
+      <div class="prog"><i style="width:${pct}%"></i></div>
+      <div class="row between" style="flex-wrap:wrap;gap:6px"><span class="num">Total ${money(e.total)} · pagado ${money(e.pag)} · resta <strong>${money(e.resta)}</strong></span>
+        <span class="meta">${e.sem? `${e.sem} semana${e.sem===1?"":"s"} de ${money(e.semanal)}` : "De contado"}${e.prox? ` · próximo pago ${fecha(e.prox)} por ${money(e.proxMonto)}` : ""}</span></div>
+      ${r.notas? `<div class="meta">${esc(r.notas)}</div>`:""}
+      ${(r.archivos||[]).length? `<div class="row" style="gap:6px;flex-wrap:wrap">${r.archivos.map((a,i)=>`<button class="small ghost" data-vernota="${r.id}|${i}">${a.tipo==="application/pdf"? "Ver PDF de la nota" : "Ver foto de la nota"}${r.archivos.length>1? " "+(i+1):""}</button>`).join("")}</div>`:""}
+      <div class="row" style="gap:6px">${r._mio? `<label class="small ghost" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:1px solid rgba(242,230,216,.45);border-radius:999px;padding:6px 14px;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--cream)">${(r.archivos||[]).length? "Agregar otra foto":"Subir foto de la nota"}<input type="file" accept="image/*,application/pdf" multiple data-subirnota="${r.id}" style="display:none"></label>`:""}${e.resta>0? `<button class="small" data-pagarr="${r.id}">Registrar pago</button>`:""}${r._mio? `<button class="small quiet" data-delr="${r.id}">Borrar restock</button>`:`<span class="meta">Registrado por ${esc(r._quien)}</span>`}</div>
+    </div>`; }).join("") : `<p class="empty">Todavía no hay restocks. Cuando le compren a Ian, usen "Agregar restock": las piezas se suman a tu stock y aquí ves cuánto se le debe y cuándo pagar.</p>`;
+  const pagos = F.pagosIan.slice().sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+  $("#gPagosTxt").textContent = pagTot? `Total pagado ${money(pagTot)}` : "";
+  $("#gPagos").innerHTML = pagos.length? pagos.slice(0,40).map(p=>{ const r=F.restocks.find(x=>x.id===p.restock);
+    return `<div class="item"><div class="row between"><strong>${money(p.monto)}</strong><span class="meta">${fecha(p.fecha)}</span></div>
+      <div class="meta">${r? `Restock del ${fecha(r.fecha)}` : "Pago suelto"} · pagó ${esc(p.pagadoPor||"Caja del negocio")}${p.notas? " · "+esc(p.notas):""}</div>
+      ${p._mio? `<div class="row"><button class="small quiet" data-delpi="${p.id}">Borrar</button></div>` : `<div class="meta">Registrado por ${esc(p._quien)}</div>`}</div>`; }).join("") : `<p class="empty">Todavía no hay pagos a Ian registrados.</p>`;
+  const totMes = gMes.reduce((a,g)=>a+(+g.monto||0),0), porCat = {};
+  gMes.forEach(g=>porCat[g.categoria||"Otro"]=(porCat[g.categoria||"Otro"]||0)+(+g.monto||0));
+  $("#gGastos").innerHTML = (gMes.length? `<div class="meta"><strong>Total ${money(totMes)}</strong> · ${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>esc(k)+" "+money(v)).join(" · ")}</div>` : "") +
+    (gMes.length? gMes.map(g=>`<div class="item"><div class="row between"><strong>${esc(g.concepto||g.categoria)}</strong><span class="num">${money(g.monto)}</span></div>
+      <div class="meta">${fecha(g.fecha)} · ${esc(g.categoria||"Otro")} · pagó ${esc(g.pagadoPor||"Caja del negocio")}${g.notas? " · "+esc(g.notas):""}</div>
+      ${g._mio? `<div class="row" style="gap:6px"><button class="small quiet" data-editg="${g.id}">Editar</button><button class="small quiet" data-delg="${g.id}">Borrar</button></div>` : `<div class="meta">Registrado por ${esc(g._quien)}</div>`}</div>`).join("")
+    : `<p class="empty">No hay gastos registrados en este mes.</p>`);
+}
+function formGasto(g){
+  g = g || {fecha:hoyISO(), categoria:CAT_GASTO[0], pagadoPor:PAGADOR[0]};
+  abrir(`<h3 id="ovTitle">${g.id?"Editar gasto":"Registrar gasto"}</h3>
+  <form id="fGasto" style="display:grid;gap:10px">
+    <div class="fields">
+      <label for="ggCon">¿En qué se gastó?<input id="ggCon" required placeholder="Ej. Guías de envío, bolsas, anuncio en Facebook" value="${esc(g.concepto||"")}"></label>
+      <label for="ggMonto">¿Cuánto? ($)<input id="ggMonto" type="number" inputmode="decimal" min="1" step="any" required value="${g.monto||""}"></label>
+      <label for="ggCat">Categoría<select id="ggCat">${CAT_GASTO.map(c=>`<option ${c===g.categoria?"selected":""}>${c}</option>`).join("")}</select></label>
+      <label for="ggQuien">¿Con qué dinero?<select id="ggQuien">${PAGADOR.map(c=>`<option ${c===g.pagadoPor?"selected":""}>${c}</option>`).join("")}</select></label>
+      <label for="ggFecha">Fecha<input id="ggFecha" type="date" required value="${g.fecha}"></label>
+    </div>
+    <label for="ggNotas">Notas (opcional)<input id="ggNotas" value="${esc(g.notas||"")}"></label>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar gasto</button></div>
+  </form>`);
+  $("#fGasto").addEventListener("submit", ev=>{
+    ev.preventDefault();
+    const d = {concepto:$("#ggCon").value.trim(), monto:+$("#ggMonto").value||0, categoria:$("#ggCat").value, pagadoPor:$("#ggQuien").value, fecha:$("#ggFecha").value, notas:$("#ggNotas").value.trim()};
+    if(d.monto<=0) return;
+    const f = finz();
+    if(g.id){ const x=f.gastos.find(y=>y.id===g.id); if(x) Object.assign(x,d); } else f.gastos.push(Object.assign({id:uid(), por:yo()}, d));
+    saveFinanzas(); cerrar(); renderAll(); toast("Gasto guardado");
+  });
+}
+function formPagoIan(rid){
+  const F = todasFin(), pend = F.restocks.map(r=>({r, e:estadoRestock(r,F.pagosIan)})).filter(x=>x.e.resta>0);
+  const sel = rid || (pend[0] && pend[0].r.id) || "";
+  const sug = id=>{ const x=pend.find(y=>y.r.id===id); return x? x.e.proxMonto : ""; };
+  abrir(`<h3 id="ovTitle">Registrar pago a Ian</h3>
+  <form id="fPagoIan" style="display:grid;gap:10px">
+    <div class="fields">
+      <label for="piRes">¿De qué compra?<select id="piRes">${pend.map(x=>`<option value="${x.r.id}" ${x.r.id===sel?"selected":""}>Restock del ${fecha(x.r.fecha)} · debemos ${money(x.e.resta)}</option>`).join("")}<option value="" ${sel===""?"selected":""}>Pago suelto (sin restock)</option></select></label>
+      <label for="piMonto">¿Cuánto le pagaron? ($)<input id="piMonto" type="number" inputmode="decimal" min="1" step="any" required value="${sug(sel)}"></label>
+      <label for="piQuien">¿Con qué dinero?<select id="piQuien">${PAGADOR.map(c=>`<option>${c}</option>`).join("")}</select></label>
+      <label for="piFecha">Fecha<input id="piFecha" type="date" required value="${hoyISO()}"></label>
+    </div>
+    <label for="piNotas">Notas (opcional)<input id="piNotas" placeholder="Ej. transferencia, efectivo"></label>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar pago</button></div>
+  </form>`);
+  $("#piRes").addEventListener("change", ()=>{ const v=sug($("#piRes").value); if(v) $("#piMonto").value=v; });
+  $("#fPagoIan").addEventListener("submit", ev=>{
+    ev.preventDefault();
+    const m=+$("#piMonto").value||0; if(m<=0) return;
+    finz().pagosIan.push({id:uid(), restock:$("#piRes").value||null, monto:m, pagadoPor:$("#piQuien").value, fecha:$("#piFecha").value, notas:$("#piNotas").value.trim(), por:yo()});
+    saveFinanzas(); cerrar(); renderAll(); toast("Pago a Ian guardado");
+  });
+}
+function formRestock(){
+  let lines = [];
+  const lista = perfumes().slice().sort((a,b)=>(a.m+a.n).localeCompare(b.m+b.n));
+  const costoDe = p=>Array.isArray(p.costo)? +p.costo[0]||0 : (+p.costo||0);
+  abrir(`<h3 id="ovTitle">Agregar restock (compra a Ian)</h3>
+  <form id="fRestock" style="display:grid;gap:12px">
+    <p class="meta">Agrega los perfumes que compraron. Las piezas se suman a tu stock al guardar.</p>
+    <div class="fields">
+      <label for="rsPerf">Perfume<select id="rsPerf"><option value="">Elige un perfume…</option>${lista.map(p=>`<option value="${p.id}">${esc(p.m+" · "+p.n)}</option>`).join("")}<option value="__nuevo">+ Perfume nuevo (no está en la lista)</option></select></label>
+      <label for="rsQ">Piezas<input id="rsQ" type="number" inputmode="numeric" min="1" value="1"></label>
+      <label for="rsC">Costo por pieza ($)<input id="rsC" type="number" inputmode="decimal" min="0" step="any"></label>
+    </div>
+    <div id="rsNuevo" class="fields" style="display:none">
+      <label for="rsNn">Nombre del perfume<input id="rsNn" placeholder="Ej. Khamrah EDP"></label>
+      <label for="rsNm">Marca<input id="rsNm" placeholder="Ej. Lattafa"></label>
+      <label for="rsNg">Para<select id="rsNg"><option value="H">Hombre</option><option value="M">Mujer</option><option value="U">Unisex</option></select></label>
+      <label for="rsNt">Tipo<select id="rsNt"><option value="A">Árabe</option><option value="D">Diseñador</option><option value="C">Cuba</option></select></label>
+      <label for="rsNp">Precio de venta 1–4 pz ($)<input id="rsNp" type="number" inputmode="decimal" min="0"></label>
+    </div>
+    <div class="row"><button type="button" class="small ghost" id="rsAdd">Agregar a la lista</button></div>
+    <div class="list" id="rsLines"></div>
+    <div class="fields">
+      <label for="rsFecha">Fecha de la compra<input id="rsFecha" type="date" required value="${hoyISO()}"></label>
+      <label for="rsAnt">¿Cuánto le pagaron hoy? ($)<input id="rsAnt" type="number" inputmode="decimal" min="0" step="any" value="0"></label>
+      <label for="rsQuien">¿Con qué dinero?<select id="rsQuien">${PAGADOR.map(c=>`<option>${c}</option>`).join("")}</select></label>
+      <label for="rsSem">¿En cuántas semanas le pagamos el resto?<select id="rsSem"><option value="0">De contado (sin plazo)</option>${[1,2,3,4,5,6,8,10,12].map(n=>`<option value="${n}" ${n===4?"selected":""}>${n} semana${n===1?"":"s"}</option>`).join("")}</select></label>
+      <label for="rsSemM">¿Cuánto cada semana? ($)<input id="rsSemM" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label for="rsPrimer">Primer pago<input id="rsPrimer" type="date" value="${addDays(hoyISO(),7)}"></label>
+    </div>
+    <label for="rsNotas">Notas (opcional)<input id="rsNotas" placeholder="Ej. nota NC-000130"></label>
+    <label for="rsArch">Foto o archivo de la nota de Ian (opcional)<input id="rsArch" type="file" accept="image/*,application/pdf" multiple></label>
+    <p class="meta" style="margin-top:-6px">En el celular puedes tomarle foto directo a la nota. También acepta PDF.</p>
+    <div class="res" id="rsRes"></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar restock</button></div>
+  </form>`);
+  let semManual = false;
+  const total = ()=>lines.reduce((a,l)=>a+l.q*l.costo,0);
+  const resumen = ()=>{
+    $("#rsLines").innerHTML = lines.length? lines.map((l,i)=>`<div class="item row between" style="gap:8px"><span><strong>${l.q} × ${esc(l.n)}</strong> <span class="meta">${esc(l.m)}${l.nuevo?" · nuevo":""} · ${money(l.costo)} c/u</span></span><span class="row" style="gap:8px"><span class="num">${money(l.q*l.costo)}</span><button type="button" class="small quiet" data-rsdel="${i}">Quitar</button></span></div>`).join("") : `<p class="empty">Todavía no agregas perfumes.</p>`;
+    const t = total(), ant = Math.min(t, +$("#rsAnt").value||0), sem = +$("#rsSem").value||0;
+    if(!semManual) $("#rsSemM").value = sem? Math.ceil((t-ant)/sem) : "";
+    $("#rsSemM").disabled = !sem; $("#rsPrimer").disabled = !sem;
+    const pz = lines.reduce((a,l)=>a+l.q,0);
+    $("#rsRes").innerHTML = `<div><small>Piezas</small><b>${pz}</b></div><div><small>Total de la compra</small><b>${money(t)}</b></div><div><small>Pagado hoy</small><b>${money(ant)}</b></div><div><small>Le quedaremos a deber</small><b>${money(t-ant)}</b></div>${sem? `<div><small>Plan</small><b>${sem} × ${money(+$("#rsSemM").value||0)}</b></div>`:""}`;
+  };
+  $("#rsPerf").addEventListener("change", ()=>{ const v=$("#rsPerf").value; $("#rsNuevo").style.display = v==="__nuevo"? "" : "none"; const p=lista.find(x=>x.id===v); if(p) $("#rsC").value = costoDe(p)||""; });
+  $("#rsAdd").addEventListener("click", ()=>{
+    const v=$("#rsPerf").value, q=Math.max(1,+$("#rsQ").value||1), c=+$("#rsC").value||0;
+    if(!v){ toast("Elige un perfume"); return; }
+    if(v==="__nuevo"){
+      const n=$("#rsNn").value.trim(), m=$("#rsNm").value.trim(); if(!n){ toast("Escribe el nombre del perfume nuevo"); return; }
+      lines.push({nuevo:true, id:"x"+uid(), n, m, q, costo:c, g:$("#rsNg").value, t:$("#rsNt").value, p1:+$("#rsNp").value||0});
+    } else { const p=lista.find(x=>x.id===v); const ex=lines.find(l=>l.id===v); if(ex){ ex.q+=q; ex.costo=c; } else lines.push({id:v, n:p.n, m:p.m, q, costo:c}); }
+    $("#rsPerf").value=""; $("#rsQ").value=1; $("#rsC").value=""; $("#rsNuevo").style.display="none"; ["#rsNn","#rsNm","#rsNp"].forEach(s=>$(s).value="");
+    resumen();
+  });
+  $("#fRestock").addEventListener("click", e=>{ const b=e.target.closest("[data-rsdel]"); if(b){ lines.splice(+b.dataset.rsdel,1); resumen(); } });
+  $("#rsSemM").addEventListener("input", ()=>{ semManual=true; resumen(); });
+  ["#rsAnt"].forEach(s=>$(s).addEventListener("input", resumen));
+  $("#rsSem").addEventListener("change", ()=>{ semManual=false; resumen(); });
+  resumen();
+  $("#fRestock").addEventListener("submit", ev=>{
+    ev.preventDefault();
+    if(!lines.length){ toast("Agrega al menos un perfume"); return; }
+    const t = total(), ant = Math.min(t, +$("#rsAnt").value||0), sem = +$("#rsSem").value||0, f = finz();
+    S.extra = S.extra||[];
+    lines.filter(l=>l.nuevo).forEach(l=>{ const p1 = l.p1 || Math.ceil(l.costo*1.25/50)*50; const p2 = Math.round(p1*0.94/50)*50 || p1;
+      S.extra.push({id:l.id, n:l.n, m:l.m, t:l.t, g:l.g, fam:["amaderado"], int:2, cmin:1, cmax:3, dem:2, pr: p1<700?1: p1<1300?2:3, oc:["dia","cita"], huele:"—", comp:"", precios:[p1,p2,p2,p2,p2,p2], costo:[l.costo,l.costo,l.costo,l.costo,l.costo,l.costo], compra:0, img:0}); });
+    const r = {id:uid(), fecha:$("#rsFecha").value, items:lines.map(l=>({id:l.id, n:l.n, m:l.m, q:l.q, costo:l.costo})), total:t, anticipo:ant, semanas:sem, pagoSemanal: sem? (+$("#rsSemM").value||Math.ceil((t-ant)/sem)) : 0, primerPago: sem? $("#rsPrimer").value : null, notas:$("#rsNotas").value.trim(), por:yo()};
+    const archivos = [...($("#rsArch").files||[])];
+    f.restocks.push(r);
+    if(archivos.length) adjuntarNotas(r, archivos);
+    if(ant>0) f.pagosIan.push({id:uid(), restock:r.id, monto:ant, pagadoPor:$("#rsQuien").value, fecha:r.fecha, notas:"Pago el día de la compra", por:yo()});
+    saveFinanzas(); cerrar(); renderAll(); toast(`Restock guardado: ${lines.reduce((a,l)=>a+l.q,0)} piezas sumadas a tu stock`);
+  });
+}
+document.addEventListener("click", e=>{
+  let b;
+  if(e.target.closest("#btnGasto")) formGasto();
+  else if(e.target.closest("#btnPagoIan")) formPagoIan();
+  else if(e.target.closest("#btnRestock")) formRestock();
+  else if((b=e.target.closest("[data-pagarr]"))) formPagoIan(b.dataset.pagarr);
+  else if((b=e.target.closest("[data-editg]"))){ const g=finz().gastos.find(x=>x.id===b.dataset.editg); if(g) formGasto(g); }
+  else if((b=e.target.closest("[data-delg],[data-delpi],[data-delr]"))){
+    if(!b.dataset.ok){ b.dataset.ok="1"; b.textContent="¿Seguro? Toca otra vez"; return; }
+    const f=finz();
+    if(b.dataset.delg) f.gastos=f.gastos.filter(x=>x.id!==b.dataset.delg);
+    if(b.dataset.delpi) f.pagosIan=f.pagosIan.filter(x=>x.id!==b.dataset.delpi);
+    if(b.dataset.delr){ f.restocks=f.restocks.filter(x=>x.id!==b.dataset.delr); f.pagosIan=f.pagosIan.filter(x=>x.restock!==b.dataset.delr); }
+    saveFinanzas(); renderAll(); toast("Borrado");
+  }
+});
+document.addEventListener("change", e=>{ if(e.target.id==="gMes"){ gMesSel=e.target.value; renderGastos(); } });
+/* ---- Fotos / archivos de la nota de Ian ---- */
+function leerDataURL(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file); }); }
+async function comprimirImagen(file, maxLargo){
+  const url = await leerDataURL(file);
+  const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+  let lado = maxLargo, q = .72, out = url;
+  for(let k=0;k<6;k++){
+    const esc_ = Math.min(1, lado/Math.max(img.width, img.height));
+    const cv=document.createElement("canvas"); cv.width=Math.round(img.width*esc_); cv.height=Math.round(img.height*esc_);
+    const cx=cv.getContext("2d"); cx.fillStyle="#fff"; cx.fillRect(0,0,cv.width,cv.height); cx.drawImage(img,0,0,cv.width,cv.height);
+    out = cv.toDataURL("image/jpeg", q);
+    if(out.length < (window.__SB__? 900000 : 230000)) break;
+    lado = Math.round(lado*.8); q = Math.max(.45, q-.08);
+  }
+  return out;
+}
+async function dataURLaBlob(d){ return await (await fetch(d)).blob(); }
+async function guardarArchivo(file){
+  const id = uid(), esImg = (file.type||"").startsWith("image/"), tipo = esImg? "image/jpeg" : (file.type||"application/pdf");
+  if(window.__SB__){
+    const sb = window.__SB__, path = `${window.__UID__}/${id}.${esImg? "jpg" : "pdf"}`;
+    const body = esImg? await dataURLaBlob(await comprimirImagen(file, 1800)) : file;
+    if(!esImg && file.size > 10*1024*1024) throw new Error("El PDF pesa más de 10 MB");
+    const {error} = await sb.storage.from("notas").upload(path, body, {contentType:tipo, upsert:false});
+    if(error) throw error;
+    return {ref:"sb:"+path, nombre:file.name, tipo, fecha:hoyISO()};
+  }
+  const db = await claude.use("db"); if(!db) throw new Error("sin conexión");
+  let data;
+  if(esImg) data = await comprimirImagen(file, 1300);
+  else { if(file.size > 170000) throw new Error("En esta versión de prueba el PDF debe pesar menos de 170 KB; mejor súbelo como foto"); data = await leerDataURL(file); }
+  await db.doc("notas/"+id).set({data, nombre:file.name, tipo, fecha:hoyISO()});
+  return {ref:"db:"+id, nombre:file.name, tipo, fecha:hoyISO()};
+}
+async function adjuntarNotas(r, archivos){
+  toast(`Subiendo ${archivos.length===1? "la nota" : archivos.length+" archivos"}…`);
+  const ok=[];
+  for(const f of archivos){ try{ ok.push(await guardarArchivo(f)); }catch(e){ toast("No se pudo subir "+(f.name||"el archivo")+": "+(e.message||"error")); } }
+  if(!ok.length) return;
+  const rr = finz().restocks.find(x=>x.id===r.id) || r;
+  rr.archivos = (rr.archivos||[]).concat(ok);
+  await saveFinanzas(); renderAll(); toast(ok.length===1? "Nota guardada" : ok.length+" archivos guardados");
+}
+async function verNota(a){
+  try{
+    let src;
+    if(a.ref.startsWith("sb:")){ const {data, error} = await window.__SB__.storage.from("notas").createSignedUrl(a.ref.slice(3), 3600); if(error) throw error; src = data.signedUrl; }
+    else { const db = await claude.use("db"); const d = await db.doc("notas/"+a.ref.slice(3)).get(); if(!d.exists) throw new Error("no encontrada"); src = d.data().data; }
+    if(a.tipo==="application/pdf"){
+      const url = src.startsWith("data:")? URL.createObjectURL(await dataURLaBlob(src)) : src;
+      abrir(`<h3 id="ovTitle">Nota de Ian (PDF)</h3><p class="meta">${esc(a.nombre||"")} · ${a.fecha? fecha(a.fecha):""}</p><iframe src="${url}" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:12px;background:#fff" title="Nota en PDF"></iframe><div class="row" style="justify-content:flex-end"><a class="btn small ghost" href="${url}" target="_blank" rel="noopener">Abrir en otra pestaña</a><button type="button" class="quiet" data-cerrar>Cerrar</button></div>`);
+    } else {
+      abrir(`<h3 id="ovTitle">Nota de Ian</h3><p class="meta">${esc(a.nombre||"")} · ${a.fecha? fecha(a.fecha):""}</p><img src="${src}" alt="Foto de la nota de Ian" style="width:100%;border-radius:12px;background:#fff"><div class="row" style="justify-content:flex-end">${src.startsWith("http")? `<a class="btn small ghost" href="${src}" target="_blank" rel="noopener">Abrir en otra pestaña</a>`:""}<button type="button" class="quiet" data-cerrar>Cerrar</button></div>`);
+    }
+  }catch(e){ toast("No se pudo abrir la nota"); }
+}
+document.addEventListener("click", e=>{ const b=e.target.closest("[data-vernota]"); if(!b) return; const [rid,i]=b.dataset.vernota.split("|"); const r=todasFin().restocks.find(x=>x.id===rid); const a=r&&(r.archivos||[])[+i]; if(a) verNota(a); });
+document.addEventListener("change", e=>{ const inp=e.target.closest("[data-subirnota]"); if(!inp) return; const r=finz().restocks.find(x=>x.id===inp.dataset.subirnota); const fs=[...(inp.files||[])]; if(r&&fs.length) adjuntarNotas(r, fs); inp.value=""; });
+
+
 /* ===================== SOCIOS ===================== */
 const NIVELES = [{t:"Socio",min:1,ben:"Kit de inicio, asesoría por WhatsApp y garantía de rotación si es local"},{t:"Socio Plata",min:30,ben:"2 decants extra de regalo en cada pedido y prioridad en novedades"},{t:"Socio Oro",min:75,ben:"Precio de 15–24 piezas desde 5 piezas en los perfumes seleccionados"}];
 function renderSocios(){
@@ -1256,7 +1530,7 @@ $("#btnNuevoPerf").addEventListener("click", ()=>{
 });
 
 /* ===================== NAVEGACIÓN ===================== */
-const VIEWS = ["hoy","estados","aroma","clientes","ventas","socios","compras","mensajes","calculadora","catalogo"];
+const VIEWS = ["hoy","estados","aroma","clientes","ventas","gastos","socios","compras","mensajes","calculadora","catalogo"];
 function route(){
   let v = (location.hash||"").slice(1); if(!VIEWS.includes(v)) v = "hoy";
   VIEWS.forEach(x=>{ document.getElementById("v-"+x).classList.toggle("on", x===v); });
@@ -1284,7 +1558,7 @@ function normalizar(){
 }
 function seguro(fn){ try{ fn(); }catch(e){ console.error(e); } }
 function todosPedidos(){ const out=[]; const add=(cl,dueno,mio)=>(cl||[]).forEach(c=>(c&&c.pedidos||[]).forEach(pd=>{ if(pd) out.push({c, p:pd, vend: pd.vend || c.vend || dueno, mio}); })); add((S.clientes||[]).concat((S.borrados||[]).filter(c=>!c.sinEntregar)), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add((d.clientes||[]).concat((d.borrados||[]).filter(c=>c&&!c.sinEntregar)), d.persona||"Santiago", false); }); return out; }
-function existencias(){ const v={}; Object.values(OTROS).forEach(d=>((d&&d.clientes)||[]).concat(((d&&d.borrados)||[]).filter(c=>c&&!c.sinEntregar)).forEach(c=>(c&&c.pedidos||[]).forEach(pd=>(pd&&pd.items||[]).forEach(it=>{ if(it&&it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); })))); (S.clientes||[]).concat((S.borrados||[]).filter(c=>!c.sinEntregar)).forEach(c=>(c.pedidos||[]).forEach(pd=>(pd.items||[]).forEach(it=>{ if(it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); }))); BASE.forEach(p=>{ if(p.compra!=null) p.stock=p.compra-(v[p.id]||0); }); }
+function existencias(){ const v={}; Object.values(OTROS).forEach(d=>((d&&d.clientes)||[]).concat(((d&&d.borrados)||[]).filter(c=>c&&!c.sinEntregar)).forEach(c=>(c&&c.pedidos||[]).forEach(pd=>(pd&&pd.items||[]).forEach(it=>{ if(it&&it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); })))); (S.clientes||[]).concat((S.borrados||[]).filter(c=>!c.sinEntregar)).forEach(c=>(c.pedidos||[]).forEach(pd=>(pd.items||[]).forEach(it=>{ if(it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); }))); const rq = restockPorPerfume(); perfumes().forEach(p=>{ if(p.compra!=null || rq[p.id]) p.stock=(+p.compra||0)+(rq[p.id]||0)-(v[p.id]||0); }); }
 let vSocio = null;
 function renderVentas(){
   if(!vSocio) vSocio = yo();
@@ -1304,7 +1578,7 @@ document.addEventListener("click", e=>{
   if((b=e.target.closest("[data-vs]"))){ vSocio = b.dataset.vs; renderVentas(); }
   else if((b=e.target.closest("[data-yo]"))){ S.cfg = S.cfg||{}; S.cfg.persona = b.dataset.yo; vSocio = b.dataset.yo; save(); renderAll(); toast("Ahora registras como "+b.dataset.yo); }
 });
-function renderAll(){ normalizar(); existencias(); [renderHoy, renderSocios, renderCompras, renderEstado, renderAroma].forEach(seguro); if(aromaModo==="may") seguro(renderMayoreo); [renderClientes, renderVentas, renderMensajes, renderCalc, renderCatalogo].forEach(seguro); }
+function renderAll(){ normalizar(); existencias(); [renderHoy, renderSocios, renderCompras, renderEstado, renderAroma].forEach(seguro); if(aromaModo==="may") seguro(renderMayoreo); [renderClientes, renderVentas, renderGastos, renderMensajes, renderCalc, renderCatalogo].forEach(seguro); }
 seguro(fillSelects); seguro(route); initStore().catch(e=>console.error(e));
 
 /* parallax: el titular se mueve más lento que el fondo; las nubes siguen ligeramente el mouse */
