@@ -964,6 +964,23 @@ function renderGastos(){
   const proxs = deudas.filter(x=>x.e.prox).sort((a,b)=>a.e.prox.localeCompare(b.e.prox));
   const pagMes = F.pagosIan.filter(p=>(p.fecha||"").startsWith(mes)).reduce((a,p)=>a+(+p.monto||0),0);
   const pagTot = F.pagosIan.reduce((a,p)=>a+(+p.monto||0),0);
+  // dinero que queda: lo cobrado de las ventas menos lo que salió de la caja del negocio
+  const peds = todosPedidos();
+  const cobrado = peds.reduce((a,x)=>a+(+pagado(x.p)||0),0);
+  const porCobrar = peds.reduce((a,x)=>a+Math.max(0,+saldo(x.p)||0),0);
+  const deCaja = x=>!x.pagadoPor || x.pagadoPor==="Caja del negocio";
+  const pagIanCaja = F.pagosIan.filter(deCaja).reduce((a,p)=>a+(+p.monto||0),0);
+  const gastCaja = F.gastos.filter(deCaja).reduce((a,g)=>a+(+g.monto||0),0);
+  const queda = cobrado - pagIanCaja - gastCaja;
+  const prox0 = proxs[0];
+  $("#gCaja").innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Dinero que nos queda</h3><span class="pill ${queda<0?"bad":"good"}">${queda<0? "Faltan "+money(-queda) : "Disponible"}</span></div>
+    <div class="res">
+      <div><small>Cobrado de las ventas</small><b>${money(cobrado)}</b></div>
+      <div><small>Menos pagos a Ian</small><b>−${money(pagIanCaja)}</b></div>
+      <div><small>Menos gastos</small><b>−${money(gastCaja)}</b></div>
+      <div style="border-color:var(--gold-2,#A88454)"><small>Nos queda</small><b>${money(queda)}</b></div>
+    </div>
+    <p class="meta">Cuenta lo que ya les pagaron los clientes (anticipos y abonos) de los dos, menos lo que salió de la caja del negocio. Los gastos o pagos que alguno pagó de su bolsa no se restan aquí.${porCobrar? ` Todavía les deben ${money(porCobrar)} de clientes.`:""}${prox0? ` Para el próximo pago a Ian (${fecha(prox0.e.prox)}) se necesitan ${money(prox0.e.proxMonto)}${queda>=prox0.e.proxMonto? ": sí alcanza." : `: faltan ${money(prox0.e.proxMonto-Math.max(0,queda))}.`}` : ""}</p>`;
   $("#gTiles").innerHTML = [
     [money(F.gastos.filter(g=>(g.fecha||"").startsWith(mes)).reduce((a,g)=>a+(+g.monto||0),0)), "gastos este mes"],
     [money(pagMes), "pagado a Ian este mes"],
