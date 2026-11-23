@@ -551,7 +551,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795153238"></script>
+<script src="config.js?b=1795471631"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -583,7 +583,10 @@ async function arrancar(session){
     collection(path){
       return { onSnapshot(next, err){
         let vivo=true;
-        const leer = async()=>{ const {data, error} = await sb.from("equipo").select("id,data"); if(!vivo) return; if(error){ return; } const docs=(data||[]).map(filaADoc); next({docs, size:docs.length, empty:!docs.length, metadata:{fromCache:false, hasPendingWrites:false}, docChanges:()=>[]}); };
+        let firma = null;
+        const leer = async()=>{ const {data, error} = await sb.from("equipo").select("id,data,updated_at"); if(!vivo) return; if(error){ return; }
+          const f = (data||[]).map(r=>r.id+"@"+r.updated_at).sort().join("|"); if(f===firma) return; firma = f;
+          const docs=(data||[]).map(filaADoc); next({docs, size:docs.length, empty:!docs.length, metadata:{fromCache:false, hasPendingWrites:false}, docChanges:()=>[]}); };
         leer();
         const ch = sb.channel("equipo-cambios").on("postgres_changes", {event:"*", schema:"public", table:"equipo"}, ()=>leer()).subscribe();
         const t = setInterval(leer, 30000);
@@ -596,7 +599,7 @@ async function arrancar(session){
   window.claude = { use: async n=> n==="db"? db : n==="user"? user : null };
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795153238"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795471631"; document.body.appendChild(sc);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");

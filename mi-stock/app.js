@@ -70,7 +70,7 @@ const LS_KEY = "essence-centro-v1";
 function lsGet(){ try{ const r = localStorage.getItem(LS_KEY); return r? JSON.parse(r): null; }catch(e){ return null; } }
 function lsSet(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); return true; }catch(e){ return false; } }
 function setPill(txt, cls){ const p = document.getElementById("savePill"); p.textContent = txt; p.className = "pill " + (cls||""); }
-let saveTimer = null;
+let saveTimer = null, saveTimerVivo = false;
 const SOLO_CONSULTA = !window.__BASE__;
 function save(){
   if(SOLO_CONSULTA){ toast("Esta versión es solo de consulta: registra los cambios en la página de GitHub"); setTimeout(()=>location.reload(), 1800); return; }
@@ -78,7 +78,9 @@ function save(){
   if(saveMode !== "db"){ setPill(lsSet()? "Guardado en este navegador" : "Sin guardar", lsSet()? "warn":"bad"); return; }
   clearTimeout(saveTimer);
   setPill("Guardando…","plain");
-  saveTimer = setTimeout(flush, 600);
+  remotoPendiente = null; // lo local es más nuevo
+  saveTimerVivo = true;
+  saveTimer = setTimeout(()=>{ saveTimerVivo = false; flush(); }, 600);
 }
 async function flush(){
   if(!dbRef) return;
@@ -93,9 +95,11 @@ async function flush(){
     setPill("No se pudo guardar en tu cuenta; quedó en este navegador","warn");
   }
   saving = false;
+  remotoPendiente = null; // lo que llegó mientras guardabas es anterior a tu cambio
   if(pending){ pending = false; flush(); }
 }
-let OTROS = {}, MI_UID = null, ES_DUENO = null, migrado = false;
+let OTROS = {}, MI_UID = null, ES_DUENO = null, migrado = false, remotoPendiente = null;
+function saveTimer_activo(){ return !!saveTimerVivo; }
 const SOCIOS_EQ = ["Braulio","Santiago"];
 function yo(){ return (S.cfg&&S.cfg.persona) || (ES_DUENO===false? "Santiago" : "Braulio"); }
 function cargarS(d){ S = {clientes: JSON.parse(JSON.stringify(d.clientes||[])), borrados: JSON.parse(JSON.stringify(d.borrados||[])), cat: JSON.parse(JSON.stringify(d.cat||{})), extra: JSON.parse(JSON.stringify(d.extra||[])), cfg: JSON.parse(JSON.stringify(d.cfg||{diaCompra:4}))}; }
@@ -123,7 +127,11 @@ async function initStore(){
       OTROS = otros;
       saveMode = "db";
       if(mio){
-        if(!mio.metadata.hasPendingWrites){ cargarS(mio.data()); lsSet(); }
+        if(!mio.metadata.hasPendingWrites){
+          const nuevo = mio.data();
+          if($("#ov").classList.contains("on") || saving || saveTimer_activo()) remotoPendiente = nuevo;
+          else { cargarS(nuevo); lsSet(); }
+        }
         setPill("Guardado en tu cuenta","good");
       } else if(first && !qs.metadata.fromCache && !migrado){
         migrado = true;
@@ -489,6 +497,7 @@ function formAbono(c, p){
   $("#fAb").addEventListener("submit", ev=>{
     ev.preventDefault();
     const m = +$("#faMonto").value||0; if(m<=0) return;
+    { const cAct = S.clientes.find(x=>x.id===c.id); const pAct = cAct && (cAct.pedidos||[]).find(x=>x.id===p.id); if(pAct) p = pAct; }
     p.abonos = p.abonos||[]; p.abonos.push({fecha:$("#faFecha").value, monto:m});
     save(); cerrar(); renderAll(); toast(saldo(p)<=0? "¡Pedido liquidado!" : `Pago guardado. Resta ${money(saldo(p))}`);
   });
@@ -709,7 +718,8 @@ document.querySelectorAll("[data-fp]").forEach(b=>b.addEventListener("click",()=
   filtroPed = b.dataset.fp; document.querySelectorAll("[data-fp]").forEach(x=>x.setAttribute("aria-pressed", x===b?"true":"false")); renderClientes();
 }));
 function abrir(html){ $("#ovBody").innerHTML = html; $("#ov").classList.add("on"); const f=$("#ovBody").querySelector("input,select,textarea,button"); if(f) f.focus(); }
-function cerrar(){ $("#ov").classList.remove("on"); }
+function cerrar(){ $("#ov").classList.remove("on"); setTimeout(aplicarRemoto, 0); }
+function aplicarRemoto(){ if(!remotoPendiente || $("#ov").classList.contains("on") || saving || saveTimerVivo) return; const d = remotoPendiente; remotoPendiente = null; cargarS(d); lsSet(); renderAll(); }
 $("#ov").addEventListener("click", e=>{ if(e.target.id==="ov" || e.target.closest("[data-cerrar]")) cerrar(); });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") cerrar(); });
 
@@ -851,6 +861,9 @@ function formPedido(c, ped){
       anticipo:antDe(r), notas:$("#fpNotas").value.trim(), perfumes: r.det.map(d=>d.l.n+(d.l.q>1?" x"+d.l.q:"")).join(", ")};
     if(loc){ const ent=$("#fpEntregado").value==="si"; Object.assign(data,{entregado:ent, fechaEntrega: ent? $("#fpFechaEnt").value : null, semanas: ent && $("#fpPago").value!=="liquido"? (+$("#fpSemanas").value||0) : 0}); }
     else { const env=$("#fpEnviado").value==="si"; Object.assign(data,{enviado:env, paqueteria: env? $("#fpPaq").value : "", guia: env? $("#fpGuia").value.trim() : "", fechaEnvio: env? $("#fpFechaEnv").value : null}); }
+    // si mientras llenabas el formulario llegaron datos nuevos, usa el cliente y pedido actuales
+    const cAct = S.clientes.find(x=>x.id===c.id); if(cAct) c = cAct; else if(!S.clientes.includes(c)) S.clientes.push(c);
+    if(ed){ const pAct = (c.pedidos||[]).find(x=>x.id===ped.id); if(pAct) ped = pAct; }
     delete ped.estado;
     c.pedidos = c.pedidos||[];
     if(ed){ Object.assign(ped, data); } else c.pedidos.push(Object.assign({id:uid(), seg:{}, garantia:{}, abonos:[]}, data));
