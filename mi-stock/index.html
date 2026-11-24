@@ -461,6 +461,12 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
     <button id="btnGasto">Registrar gasto</button>
     <button id="btnPagoIan" class="ghost">Registrar pago a Ian</button>
     <button id="btnRestock" class="ghost">Agregar restock</button>
+    <button id="btnPrestamo" class="ghost">Tomar dinero prestado</button>
+  </div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Préstamos del negocio</h3><span class="meta" id="gPrestTxt"></span></div>
+    <p class="meta" style="margin-top:-4px">Cuando alguno agarra dinero de la caja del negocio, aquí queda como préstamo hasta que lo regrese.</p>
+    <div class="list" id="gPrestamos"></div>
   </div>
   <div class="card" style="display:grid;gap:10px">
     <div class="row between"><h3>Lo que le debemos a Ian</h3><span class="meta" id="gDeudaTxt"></span></div>
@@ -578,7 +584,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795478164"></script>
+<script src="config.js?b=1795555901"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -627,7 +633,7 @@ async function arrancar(session){
   window.__SB__ = sb; window.__UID__ = uid;
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795478164"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795555901"; document.body.appendChild(sc);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");

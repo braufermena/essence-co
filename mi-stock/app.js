@@ -935,9 +935,11 @@ document.addEventListener("click", e=>{
 /* ===================== GASTOS, PAGOS A IAN Y RESTOCK ===================== */
 const CAT_GASTO = ["Envíos y paquetería","Empaque y etiquetas","Publicidad","Transporte y gasolina","Sueldos","Decants y frascos","Comisiones","Otro"];
 const PAGADOR = ["Caja del negocio","Braulio","Santiago"];
-function finz(){ S.finanzas = S.finanzas || {}; ["gastos","pagosIan","restocks"].forEach(k=>{ if(!Array.isArray(S.finanzas[k])) S.finanzas[k]=[]; }); return S.finanzas; }
-function todasFin(){ const out={gastos:[],pagosIan:[],restocks:[]}; const add=(f,quien,mio)=>{ if(!f) return; ["gastos","pagosIan","restocks"].forEach(k=>(f[k]||[]).forEach(x=>{ if(x) out[k].push(Object.assign({_quien:quien, _mio:mio}, x)); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
+const FIN_KEYS = ["gastos","pagosIan","restocks","prestamos","abonosPrestamo"];
+function finz(){ S.finanzas = S.finanzas || {}; FIN_KEYS.forEach(k=>{ if(!Array.isArray(S.finanzas[k])) S.finanzas[k]=[]; }); return S.finanzas; }
+function todasFin(){ const out={}; FIN_KEYS.forEach(k=>out[k]=[]); const add=(f,quien,mio)=>{ if(!f) return; FIN_KEYS.forEach(k=>(f[k]||[]).forEach(x=>{ if(x) out[k].push(Object.assign({_quien:quien, _mio:mio}, x)); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
 function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).filter(r=>r&&!r.yaEnStock).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
+function estadoPrestamo(pr, abonos){ const total=+pr.monto||0, pag=abonos.filter(a=>a.prestamo===pr.id).reduce((x,a)=>x+(+a.monto||0),0); return {total, pag, resta:Math.max(0,total-pag)}; }
 function pagadoRestock(r, pagos){ return pagos.filter(p=>p.restock===r.id).reduce((a,p)=>a+(+p.monto||0),0); }
 function estadoRestock(r, pagos){
   const total=+r.total||0, pag=pagadoRestock(r,pagos), resta=Math.max(0,total-pag), sem=+r.semanas||0;
@@ -971,16 +973,20 @@ function renderGastos(){
   const deCaja = x=>!x.pagadoPor || x.pagadoPor==="Caja del negocio";
   const pagIanCaja = F.pagosIan.filter(deCaja).reduce((a,p)=>a+(+p.monto||0),0);
   const gastCaja = F.gastos.filter(deCaja).reduce((a,g)=>a+(+g.monto||0),0);
-  const queda = cobrado - pagIanCaja - gastCaja;
+  const prestado = F.prestamos.reduce((a,p)=>a+(+p.monto||0),0);
+  const devuelto = F.abonosPrestamo.filter(a=>F.prestamos.some(p=>p.id===a.prestamo)).reduce((a,x)=>a+(+x.monto||0),0);
+  const prestPend = Math.max(0, prestado - devuelto);
+  const queda = cobrado - pagIanCaja - gastCaja - prestPend;
   const prox0 = proxs[0];
   $("#gCaja").innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Dinero que nos queda</h3><span class="pill ${queda<0?"bad":"good"}">${queda<0? "Faltan "+money(-queda) : "Disponible"}</span></div>
     <div class="res">
       <div><small>Cobrado de las ventas</small><b>${money(cobrado)}</b></div>
       <div><small>Menos pagos a Ian</small><b>−${money(pagIanCaja)}</b></div>
       <div><small>Menos gastos</small><b>−${money(gastCaja)}</b></div>
+      ${prestado? `<div><small>Menos préstamos sin regresar</small><b>−${money(prestPend)}</b></div>`:""}
       <div style="border-color:var(--gold-2,#A88454)"><small>Nos queda</small><b>${money(queda)}</b></div>
     </div>
-    <p class="meta">Cuenta lo que ya les pagaron los clientes (anticipos y abonos) de los dos, menos lo que salió de la caja del negocio. Los gastos o pagos que alguno pagó de su bolsa no se restan aquí.${porCobrar? ` Todavía les deben ${money(porCobrar)} de clientes.`:""}${prox0? ` Para el próximo pago a Ian (${fecha(prox0.e.prox)}) se necesitan ${money(prox0.e.proxMonto)}${queda>=prox0.e.proxMonto? ": sí alcanza." : `: faltan ${money(prox0.e.proxMonto-Math.max(0,queda))}.`}` : ""}</p>`;
+    <p class="meta">Cuenta lo que ya les pagaron los clientes (anticipos y abonos) de los dos, menos lo que salió de la caja del negocio. Los gastos o pagos que alguno pagó de su bolsa no se restan aquí.${prestado? ` Los préstamos a ustedes se restan mientras no los regresen; cada abono vuelve a sumar.`:""}${porCobrar? ` Todavía les deben ${money(porCobrar)} de clientes.`:""}${prox0? ` Para el próximo pago a Ian (${fecha(prox0.e.prox)}) se necesitan ${money(prox0.e.proxMonto)}${queda>=prox0.e.proxMonto? ": sí alcanza." : `: faltan ${money(prox0.e.proxMonto-Math.max(0,queda))}.`}` : ""}</p>`;
   $("#gTiles").innerHTML = [
     [money(F.gastos.filter(g=>(g.fecha||"").startsWith(mes)).reduce((a,g)=>a+(+g.monto||0),0)), "gastos este mes"],
     [money(pagMes), "pagado a Ian este mes"],
@@ -1001,6 +1007,20 @@ function renderGastos(){
       ${(r.archivos||[]).length? `<div class="row" style="gap:6px;flex-wrap:wrap">${r.archivos.map((a,i)=>`<button class="small ghost" data-vernota="${r.id}|${i}">${a.tipo==="application/pdf"? "Ver PDF de la nota" : "Ver foto de la nota"}${r.archivos.length>1? " "+(i+1):""}</button>`).join("")}</div>`:""}
       <div class="row" style="gap:6px">${r._mio? `<label class="small ghost" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:1px solid rgba(242,230,216,.45);border-radius:999px;padding:6px 14px;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--cream)">${(r.archivos||[]).length? "Agregar otra foto":"Subir foto de la nota"}<input type="file" accept="image/*,application/pdf" multiple data-subirnota="${r.id}" style="display:none"></label>`:""}${e.resta>0? `<button class="small" data-pagarr="${r.id}">Registrar pago</button>`:""}${r._mio? `<button class="small quiet" data-delr="${r.id}">Borrar restock</button>`:`<span class="meta">Registrado por ${esc(r._quien)}</span>`}</div>
     </div>`; }).join("") : `<p class="empty">Todavía no hay restocks. Cuando le compren a Ian, usen "Agregar restock": las piezas se suman a tu stock y aquí ves cuánto se le debe y cuándo pagar.</p>`;
+  const prs = F.prestamos.map(pr=>({pr, e:estadoPrestamo(pr, F.abonosPrestamo)})).sort((a,b)=>(a.e.resta<=0)-(b.e.resta<=0) || (b.pr.fecha||"").localeCompare(a.pr.fecha||""));
+  const debenSoc = {}; prs.forEach(x=>{ if(x.e.resta>0) debenSoc[x.pr.quien]=(debenSoc[x.pr.quien]||0)+x.e.resta; });
+  $("#gPrestTxt").textContent = Object.keys(debenSoc).length? Object.entries(debenSoc).map(([k,v])=>`${k} debe ${money(v)}`).join(" · ") : (prs.length? "Todo regresado" : "");
+  $("#gPrestamos").innerHTML = prs.length? prs.map(({pr,e})=>{
+    const pct = e.total? Math.min(100, Math.round(e.pag/e.total*100)) : 100;
+    const abs = F.abonosPrestamo.filter(a=>a.prestamo===pr.id).sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+    return `<div class="item ${e.resta<=0?"okk":"soon"}" style="display:grid;gap:6px">
+      <div class="row between" style="flex-wrap:wrap;gap:6px"><strong>${esc(pr.quien)} tomó ${money(e.total)}</strong><span class="pill ${e.resta<=0?"good":"warn"}">${e.resta<=0? "Pagado" : "Debe "+money(e.resta)}</span></div>
+      <div class="meta">${fecha(pr.fecha)}${pr.motivo? " · "+esc(pr.motivo):""}</div>
+      <div class="prog"><i style="width:${pct}%"></i></div>
+      <div class="num">Prestado ${money(e.total)} · regresado ${money(e.pag)} · resta <strong>${money(e.resta)}</strong></div>
+      ${abs.length? `<div class="meta">Abonos: ${abs.map(a=>`${money(a.monto)} el ${fecha(a.fecha)}${a._mio? ` <button class="small quiet" data-delab="${a.id}" style="padding:2px 8px">Quitar</button>`:""}`).join(" · ")}</div>`:""}
+      <div class="row" style="gap:6px;flex-wrap:wrap">${e.resta>0? `<button class="small" data-abonar="${pr.id}">Registrar abono</button><button class="small ghost" data-liquidar="${pr.id}">Ya lo pagó todo</button>`:""}${pr._mio? `<button class="small quiet" data-delpr="${pr.id}">Borrar préstamo</button>`:`<span class="meta">Registrado por ${esc(pr._quien)}</span>`}</div>
+    </div>`; }).join("") : `<p class="empty">Nadie ha tomado dinero prestado del negocio.</p>`;
   const pagos = F.pagosIan.slice().sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
   $("#gPagosTxt").textContent = pagTot? `Total pagado ${money(pagTot)}` : "";
   $("#gPagos").innerHTML = pagos.length? pagos.slice(0,40).map(p=>{ const r=F.restocks.find(x=>x.id===p.restock);
@@ -1059,6 +1079,46 @@ function formPagoIan(rid){
     const m=+$("#piMonto").value||0; if(m<=0) return;
     finz().pagosIan.push({id:uid(), restock:$("#piRes").value||null, monto:m, pagadoPor:$("#piQuien").value, fecha:$("#piFecha").value, notas:$("#piNotas").value.trim(), por:yo()});
     saveFinanzas(); cerrar(); renderAll(); toast("Pago a Ian guardado");
+  });
+}
+function formPrestamo(){
+  abrir(`<h3 id="ovTitle">Tomar dinero prestado del negocio</h3>
+  <form id="fPrest" style="display:grid;gap:10px">
+    <p class="meta">Anota el dinero que alguno saca de la caja del negocio para él. Se resta de lo que les queda hasta que lo regrese.</p>
+    <div class="fields">
+      <label for="prQuien">¿Quién lo tomó?<select id="prQuien">${["Braulio","Santiago"].map(c=>`<option ${c===yo()?"selected":""}>${c}</option>`).join("")}</select></label>
+      <label for="prMonto">¿Cuánto? ($)<input id="prMonto" type="number" inputmode="decimal" min="1" step="any" required></label>
+      <label for="prFecha">Fecha<input id="prFecha" type="date" required value="${hoyISO()}"></label>
+    </div>
+    <label for="prMotivo">¿Para qué? (opcional)<input id="prMotivo" placeholder="Ej. gasolina, algo personal"></label>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar préstamo</button></div>
+  </form>`);
+  $("#fPrest").addEventListener("submit", ev=>{
+    ev.preventDefault();
+    const m=+$("#prMonto").value||0; if(m<=0) return;
+    finz().prestamos.push({id:uid(), quien:$("#prQuien").value, monto:m, fecha:$("#prFecha").value, motivo:$("#prMotivo").value.trim(), por:yo()});
+    saveFinanzas(); cerrar(); renderAll(); toast("Préstamo guardado");
+  });
+}
+function formAbonoPrestamo(pid, todo){
+  const F = todasFin(), pr = F.prestamos.find(x=>x.id===pid); if(!pr) return;
+  const e = estadoPrestamo(pr, F.abonosPrestamo);
+  if(todo){ finz().abonosPrestamo.push({id:uid(), prestamo:pid, monto:e.resta, fecha:hoyISO(), notas:"Pagó todo", por:yo()}); saveFinanzas(); renderAll(); toast(`${pr.quien} ya regresó todo`); return; }
+  abrir(`<h3 id="ovTitle">Abono de ${esc(pr.quien)}</h3>
+  <form id="fAbPr" style="display:grid;gap:10px">
+    <p class="meta">Tomó ${money(e.total)} el ${fecha(pr.fecha)}. Ha regresado ${money(e.pag)} y debe <strong>${money(e.resta)}</strong>.</p>
+    <div class="fields">
+      <label for="apMonto">¿Cuánto regresó? ($)<input id="apMonto" type="number" inputmode="decimal" min="1" max="${e.resta}" step="any" required></label>
+      <label for="apFecha">Fecha<input id="apFecha" type="date" required value="${hoyISO()}"></label>
+    </div>
+    <label for="apNotas">Notas (opcional)<input id="apNotas" placeholder="Ej. efectivo, transferencia"></label>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar abono</button></div>
+  </form>`);
+  $("#fAbPr").addEventListener("submit", ev=>{
+    ev.preventDefault();
+    const m=Math.min(e.resta, +$("#apMonto").value||0); if(m<=0) return;
+    finz().abonosPrestamo.push({id:uid(), prestamo:pid, monto:m, fecha:$("#apFecha").value, notas:$("#apNotas").value.trim(), por:yo()});
+    saveFinanzas(); cerrar(); renderAll(); toast(m>=e.resta? `${pr.quien} ya regresó todo` : "Abono guardado");
   });
 }
 function formRestock(){
@@ -1142,13 +1202,18 @@ document.addEventListener("click", e=>{
   if(e.target.closest("#btnGasto")) formGasto();
   else if(e.target.closest("#btnPagoIan")) formPagoIan();
   else if(e.target.closest("#btnRestock")) formRestock();
+  else if(e.target.closest("#btnPrestamo")) formPrestamo();
+  else if((b=e.target.closest("[data-abonar]"))) formAbonoPrestamo(b.dataset.abonar);
+  else if((b=e.target.closest("[data-liquidar]"))) formAbonoPrestamo(b.dataset.liquidar, true);
   else if((b=e.target.closest("[data-pagarr]"))) formPagoIan(b.dataset.pagarr);
   else if((b=e.target.closest("[data-editg]"))){ const g=finz().gastos.find(x=>x.id===b.dataset.editg); if(g) formGasto(g); }
-  else if((b=e.target.closest("[data-delg],[data-delpi],[data-delr]"))){
+  else if((b=e.target.closest("[data-delg],[data-delpi],[data-delr],[data-delpr],[data-delab]"))){
     if(!b.dataset.ok){ b.dataset.ok="1"; b.textContent="¿Seguro? Toca otra vez"; return; }
     const f=finz();
     if(b.dataset.delg) f.gastos=f.gastos.filter(x=>x.id!==b.dataset.delg);
     if(b.dataset.delpi) f.pagosIan=f.pagosIan.filter(x=>x.id!==b.dataset.delpi);
+    if(b.dataset.delpr){ f.prestamos=f.prestamos.filter(x=>x.id!==b.dataset.delpr); f.abonosPrestamo=f.abonosPrestamo.filter(x=>x.prestamo!==b.dataset.delpr); }
+    if(b.dataset.delab) f.abonosPrestamo=f.abonosPrestamo.filter(x=>x.id!==b.dataset.delab);
     if(b.dataset.delr){ f.restocks=f.restocks.filter(x=>x.id!==b.dataset.delr); f.pagosIan=f.pagosIan.filter(x=>x.restock!==b.dataset.delr); }
     saveFinanzas(); renderAll(); toast("Borrado");
   }
