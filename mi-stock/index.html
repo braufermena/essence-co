@@ -481,6 +481,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
       <div class="row" style="gap:8px;align-items:center"><label for="gMes" class="meta" style="text-transform:none;letter-spacing:0">Mes</label><select id="gMes" style="width:auto"></select></div></div>
     <div class="list" id="gGastos"></div>
   </div>
+  <div id="gBorrados"></div>
 </section>
 
 <!-- VENTAS POR SOCIO -->
@@ -584,7 +585,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795555901"></script>
+<script src="config.js?b=1795570851"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -633,7 +634,7 @@ async function arrancar(session){
   window.__SB__ = sb; window.__UID__ = uid;
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795555901"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795570851"; document.body.appendChild(sc);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");

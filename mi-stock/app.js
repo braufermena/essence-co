@@ -937,8 +937,8 @@ const CAT_GASTO = ["Envíos y paquetería","Empaque y etiquetas","Publicidad","T
 const PAGADOR = ["Caja del negocio","Braulio","Santiago"];
 const FIN_KEYS = ["gastos","pagosIan","restocks","prestamos","abonosPrestamo"];
 function finz(){ S.finanzas = S.finanzas || {}; FIN_KEYS.forEach(k=>{ if(!Array.isArray(S.finanzas[k])) S.finanzas[k]=[]; }); return S.finanzas; }
-function todasFin(){ const out={}; FIN_KEYS.forEach(k=>out[k]=[]); const add=(f,quien,mio)=>{ if(!f) return; FIN_KEYS.forEach(k=>(f[k]||[]).forEach(x=>{ if(x) out[k].push(Object.assign({_quien:quien, _mio:mio}, x)); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
-function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).filter(r=>r&&!r.yaEnStock).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
+function todasFin(){ const out={borrados:[]}; FIN_KEYS.forEach(k=>out[k]=[]); const add=(f,quien,mio)=>{ if(!f) return; FIN_KEYS.forEach(k=>(f[k]||[]).forEach(x=>{ if(!x) return; const o=Object.assign({_quien:quien, _mio:mio, _tipo:k}, x); if(x.borrado) out.borrados.push(o); else out[k].push(o); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
+function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).filter(r=>r&&!r.yaEnStock&&!r.borrado).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
 function estadoPrestamo(pr, abonos){ const total=+pr.monto||0, pag=abonos.filter(a=>a.prestamo===pr.id).reduce((x,a)=>x+(+a.monto||0),0); return {total, pag, resta:Math.max(0,total-pag)}; }
 function pagadoRestock(r, pagos){ return pagos.filter(p=>p.restock===r.id).reduce((a,p)=>a+(+p.monto||0),0); }
 function estadoRestock(r, pagos){
@@ -1027,6 +1027,19 @@ function renderGastos(){
     return `<div class="item"><div class="row between"><strong>${money(p.monto)}</strong><span class="meta">${fecha(p.fecha)}</span></div>
       <div class="meta">${r? `Restock del ${fecha(r.fecha)}` : "Pago suelto"} · pagó ${esc(p.pagadoPor||"Caja del negocio")}${p.notas? " · "+esc(p.notas):""}</div>
       ${p._mio? `<div class="row"><button class="small quiet" data-delpi="${p.id}">Borrar</button></div>` : `<div class="meta">Registrado por ${esc(p._quien)}</div>`}</div>`; }).join("") : `<p class="empty">Todavía no hay pagos a Ian registrados.</p>`;
+  const TIPO = {gastos:"Gasto", pagosIan:"Pago a Ian", restocks:"Restock", prestamos:"Préstamo", abonosPrestamo:"Abono de préstamo"};
+  const descB = x=>{ if(x._tipo==="gastos") return `${esc(x.concepto||x.categoria||"")} · ${esc(x.categoria||"")} · pagó ${esc(x.pagadoPor||"Caja del negocio")}`;
+    if(x._tipo==="pagosIan") return `pagó ${esc(x.pagadoPor||"Caja del negocio")}${x.notas?" · "+esc(x.notas):""}`;
+    if(x._tipo==="restocks"){ const pz=(x.items||[]).reduce((a,i)=>a+(+i.q||0),0); return `${pz} piezas${x.notas?" · "+esc(x.notas):""}`; }
+    if(x._tipo==="prestamos") return `${esc(x.quien||"")} tomó prestado${x.motivo?" · "+esc(x.motivo):""}`;
+    if(x._tipo==="abonosPrestamo"){ const pr=F.prestamos.concat(F.borrados).find(y=>y.id===x.prestamo); return `abono${pr? " de "+esc(pr.quien||""):""}${x.notas?" · "+esc(x.notas):""}`; } return ""; };
+  const bs = F.borrados.filter(x=>!x.borradoCon).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
+  $("#gBorrados").innerHTML = bs.length? `<details class="card" style="opacity:.85"><summary><strong>Borrados (${bs.length})</strong> <span class="meta">· siguen en el historial, ya no cuentan en las cuentas</span></summary><div class="list" style="margin-top:10px">${bs.map(x=>{
+      const ligados = F.borrados.filter(y=>y.borradoCon===x.id);
+      return `<div class="item" style="background:transparent;border-style:dashed"><div class="row between" style="flex-wrap:wrap;gap:6px"><strong style="color:var(--muted)"><s>${TIPO[x._tipo]||""} · ${money(x._tipo==="restocks"? x.total : x.monto)}</s></strong><span class="pill plain">Borrado el ${x.borrado?fecha(x.borrado):""}${x.borradoPor?" por "+esc(x.borradoPor):""}</span></div>
+      <div class="meta">${x.fecha?fecha(x.fecha)+" · ":""}${descB(x)}</div>
+      ${ligados.length? `<div class="meta">Se borró junto con ${ligados.length} ${ligados.length===1?"pago/abono":"pagos/abonos"}: ${ligados.map(y=>money(y.monto)).join(", ")}</div>`:""}
+      ${x._mio? `<div class="row"><button class="small quiet" data-restfin="${x._tipo}|${x.id}">Restaurar</button></div>` : `<div class="meta">Registrado por ${esc(x._quien)}</div>`}</div>`; }).join("")}</div></details>` : "";
   const totMes = gMes.reduce((a,g)=>a+(+g.monto||0),0), porCat = {};
   gMes.forEach(g=>porCat[g.categoria||"Otro"]=(porCat[g.categoria||"Otro"]||0)+(+g.monto||0));
   $("#gGastos").innerHTML = (gMes.length? `<div class="meta"><strong>Total ${money(totMes)}</strong> · ${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>esc(k)+" "+money(v)).join(" · ")}</div>` : "") +
@@ -1207,15 +1220,22 @@ document.addEventListener("click", e=>{
   else if((b=e.target.closest("[data-liquidar]"))) formAbonoPrestamo(b.dataset.liquidar, true);
   else if((b=e.target.closest("[data-pagarr]"))) formPagoIan(b.dataset.pagarr);
   else if((b=e.target.closest("[data-editg]"))){ const g=finz().gastos.find(x=>x.id===b.dataset.editg); if(g) formGasto(g); }
+  else if((b=e.target.closest("[data-restfin]"))){
+    const [k,id]=b.dataset.restfin.split("|"), f=finz(), x=(f[k]||[]).find(y=>y.id===id); if(!x) return;
+    const limpiar=o=>{ delete o.borrado; delete o.borradoPor; delete o.borradoCon; };
+    limpiar(x); FIN_KEYS.forEach(kk=>(f[kk]||[]).forEach(y=>{ if(y&&y.borradoCon===id) limpiar(y); }));
+    saveFinanzas(); renderAll(); toast("Restaurado");
+  }
   else if((b=e.target.closest("[data-delg],[data-delpi],[data-delr],[data-delpr],[data-delab]"))){
     if(!b.dataset.ok){ b.dataset.ok="1"; b.textContent="¿Seguro? Toca otra vez"; return; }
-    const f=finz();
-    if(b.dataset.delg) f.gastos=f.gastos.filter(x=>x.id!==b.dataset.delg);
-    if(b.dataset.delpi) f.pagosIan=f.pagosIan.filter(x=>x.id!==b.dataset.delpi);
-    if(b.dataset.delpr){ f.prestamos=f.prestamos.filter(x=>x.id!==b.dataset.delpr); f.abonosPrestamo=f.abonosPrestamo.filter(x=>x.prestamo!==b.dataset.delpr); }
-    if(b.dataset.delab) f.abonosPrestamo=f.abonosPrestamo.filter(x=>x.id!==b.dataset.delab);
-    if(b.dataset.delr){ f.restocks=f.restocks.filter(x=>x.id!==b.dataset.delr); f.pagosIan=f.pagosIan.filter(x=>x.restock!==b.dataset.delr); }
-    saveFinanzas(); renderAll(); toast("Borrado");
+    const f=finz(), hoy=hoyISO(), quien=yo();
+    const marcar=(lista,id,con)=>{ const x=lista.find(y=>y.id===id); if(x&&!x.borrado){ x.borrado=hoy; x.borradoPor=quien; if(con) x.borradoCon=con; } };
+    if(b.dataset.delg) marcar(f.gastos, b.dataset.delg);
+    if(b.dataset.delpi) marcar(f.pagosIan, b.dataset.delpi);
+    if(b.dataset.delab) marcar(f.abonosPrestamo, b.dataset.delab);
+    if(b.dataset.delpr){ marcar(f.prestamos, b.dataset.delpr); f.abonosPrestamo.filter(x=>x.prestamo===b.dataset.delpr).forEach(x=>marcar(f.abonosPrestamo, x.id, b.dataset.delpr)); }
+    if(b.dataset.delr){ marcar(f.restocks, b.dataset.delr); f.pagosIan.filter(x=>x.restock===b.dataset.delr).forEach(x=>marcar(f.pagosIan, x.id, b.dataset.delr)); }
+    saveFinanzas(); renderAll(); toast("Borrado: queda en el historial");
   }
 });
 document.addEventListener("change", e=>{ if(e.target.id==="gMes"){ gMesSel=e.target.value; renderGastos(); } });
