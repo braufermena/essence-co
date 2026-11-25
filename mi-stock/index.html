@@ -292,6 +292,28 @@ table.t button.dd-btn{padding:6px 12px}
 .dd-grp{color:var(--gold-2);font-size:.68rem;letter-spacing:.16em;padding:10px 14px 4px;border-top:1px solid rgba(242,230,216,.1);margin-top:4px}
 .dd-grp:first-child{border-top:0;margin-top:0}
 @media (prefers-reduced-motion: reduce){ .dd-panel{animation:none} .dd-opt,.dd-opt::before{transition:none} }
+input.dp-native{position:absolute!important;opacity:0!important;pointer-events:none!important;width:1px!important;height:1px!important;padding:0!important;border:0!important;margin:0!important}
+button.dd-btn.dp-btn::after{display:none!important}
+button.dd-btn.dp-btn{justify-content:flex-start;gap:10px}
+button.dp-btn .dp-ic{flex:0 0 auto;width:16px;height:16px;color:var(--gold-2);opacity:.9}
+button.dp-btn .dp-ph{color:rgba(242,230,216,.5)}
+.dp-panel{width:296px;max-width:calc(100vw - 16px);padding:14px 14px 10px;max-height:none!important;overflow:visible}
+.dp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.dp-mes{color:var(--cream);font-weight:600;font-size:1rem;text-transform:capitalize;letter-spacing:.01em}
+.dp-nav{all:unset;box-sizing:border-box;display:grid;place-items:center;width:34px;height:34px;border-radius:999px;cursor:pointer;color:var(--cream);border:1px solid rgba(242,230,216,.16);transition:background .25s var(--ease), border-color .25s var(--ease)}
+.dp-nav:hover,.dp-nav:focus-visible{background:rgba(242,230,216,.08);border-color:var(--gold-2);outline:none}
+.dp-sem,.dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.dp-sem span{color:var(--gold-2);font-size:.66rem;letter-spacing:.14em;padding:4px 0 6px}
+.dp-dia{all:unset;box-sizing:border-box;height:36px;display:grid;place-items:center;border-radius:999px;cursor:pointer;color:var(--cream);font-size:.9rem;font-variant-numeric:tabular-nums;transition:background .2s var(--ease), color .2s}
+.dp-dia:hover,.dp-dia.act{background:rgba(242,230,216,.09)}
+.dp-dia.fuera{color:rgba(242,230,216,.3)}
+.dp-dia.hoy{box-shadow:inset 0 0 0 1px var(--gold-2)}
+.dp-dia[aria-selected="true"]{background:var(--cream);color:var(--storm);font-weight:700}
+.dp-dia[aria-disabled="true"]{opacity:.25;cursor:not-allowed}
+.dp-pie{display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(242,230,216,.1)}
+.dp-pie button{all:unset;cursor:pointer;color:var(--gold-2);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;font-weight:600;padding:6px 8px;border-radius:8px}
+.dp-pie button:hover,.dp-pie button:focus-visible{background:rgba(242,230,216,.07);outline:none}
+
 /* Animaciones de entrada cinematográficas */
 @keyframes revelar{from{opacity:0;transform:translateY(28px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
 @keyframes tituloEntra{from{opacity:0;letter-spacing:.06em;transform:translateY(18px)}to{opacity:.94;letter-spacing:-.035em;transform:none}}
@@ -484,6 +506,32 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
   <div id="gBorrados"></div>
 </section>
 
+<!-- DECANTS -->
+<section class="view" id="v-decants">
+  <h2>Decants</h2>
+  <p class="lead">Frascos abiertos para decants, ventas afuera de las fábricas o en línea, y lo que les quedan a deber para el día de paga. Lo ven los dos.</p>
+  <div class="tiles" id="dTiles"></div>
+  <div class="row" style="gap:8px;flex-wrap:wrap">
+    <button id="btnVenderDec">Vender decants</button>
+    <button id="btnAbrirDec" class="ghost">Abrir frasco para decants</button>
+    <button id="btnCfgDec" class="ghost">Precios y costos</button>
+  </div>
+  <div class="card" style="display:grid;gap:10px" id="dFiadoCard">
+    <div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Fiado: cobrar el día de paga</h3><span class="meta" id="dFiadoTxt"></span></div>
+    <div class="list" id="dFiado"></div>
+  </div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Frascos abiertos</h3><span class="meta" id="dAbTxt"></span></div>
+    <div class="list" id="dAbiertos"></div>
+  </div>
+  <div class="card" style="display:grid;gap:10px">
+    <div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Ventas de decants</h3>
+      <div class="row" style="gap:8px;align-items:center"><label for="dMes" class="meta" style="text-transform:none;letter-spacing:0">Mes</label><select id="dMes" style="width:auto"></select></div></div>
+    <div class="list" id="dVentas"></div>
+  </div>
+  <div id="dBorrados"></div>
+</section>
+
 <!-- VENTAS POR SOCIO -->
 <section class="view" id="v-ventas">
   <h2>Ventas por socio</h2>
@@ -585,7 +633,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795570851"></script>
+<script src="config.js?b=1795643979"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -634,7 +682,7 @@ async function arrancar(session){
   window.__SB__ = sb; window.__UID__ = uid;
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795570851"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795643979"; document.body.appendChild(sc);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");

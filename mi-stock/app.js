@@ -935,7 +935,7 @@ document.addEventListener("click", e=>{
 /* ===================== GASTOS, PAGOS A IAN Y RESTOCK ===================== */
 const CAT_GASTO = ["Envíos y paquetería","Empaque y etiquetas","Publicidad","Transporte y gasolina","Sueldos","Decants y frascos","Comisiones","Otro"];
 const PAGADOR = ["Caja del negocio","Braulio","Santiago"];
-const FIN_KEYS = ["gastos","pagosIan","restocks","prestamos","abonosPrestamo"];
+const FIN_KEYS = ["gastos","pagosIan","restocks","prestamos","abonosPrestamo","abiertos","ventasDec","abonosDec"];
 function finz(){ S.finanzas = S.finanzas || {}; FIN_KEYS.forEach(k=>{ if(!Array.isArray(S.finanzas[k])) S.finanzas[k]=[]; }); return S.finanzas; }
 function todasFin(){ const out={borrados:[]}; FIN_KEYS.forEach(k=>out[k]=[]); const add=(f,quien,mio)=>{ if(!f) return; FIN_KEYS.forEach(k=>(f[k]||[]).forEach(x=>{ if(!x) return; const o=Object.assign({_quien:quien, _mio:mio, _tipo:k}, x); if(x.borrado) out.borrados.push(o); else out[k].push(o); })); }; add(finz(), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add(d.finanzas, d.persona||"Santiago", false); }); return out; }
 function restockPorPerfume(){ const m={}; const add=f=>((f&&f.restocks)||[]).filter(r=>r&&!r.yaEnStock&&!r.borrado).forEach(r=>(r.items||[]).forEach(it=>{ if(it&&it.id) m[it.id]=(m[it.id]||0)+(+it.q||0); })); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
@@ -976,11 +976,13 @@ function renderGastos(){
   const prestado = F.prestamos.reduce((a,p)=>a+(+p.monto||0),0);
   const devuelto = F.abonosPrestamo.filter(a=>F.prestamos.some(p=>p.id===a.prestamo)).reduce((a,x)=>a+(+x.monto||0),0);
   const prestPend = Math.max(0, prestado - devuelto);
-  const queda = cobrado - pagIanCaja - gastCaja - prestPend;
+  const cobradoDec = F.ventasDec.reduce((a,v)=>a+(+v.pagado||0),0) + F.abonosDec.filter(x=>F.ventasDec.some(v=>v.id===x.venta)).reduce((a,x)=>a+(+x.monto||0),0);
+  const queda = cobrado + cobradoDec - pagIanCaja - gastCaja - prestPend;
   const prox0 = proxs[0];
   $("#gCaja").innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:8px"><h3>Dinero que nos queda</h3><span class="pill ${queda<0?"bad":"good"}">${queda<0? "Faltan "+money(-queda) : "Disponible"}</span></div>
     <div class="res">
       <div><small>Cobrado de las ventas</small><b>${money(cobrado)}</b></div>
+      ${cobradoDec? `<div><small>Más ventas de decants</small><b>${money(cobradoDec)}</b></div>`:""}
       <div><small>Menos pagos a Ian</small><b>−${money(pagIanCaja)}</b></div>
       <div><small>Menos gastos</small><b>−${money(gastCaja)}</b></div>
       ${prestado? `<div><small>Menos préstamos sin regresar</small><b>−${money(prestPend)}</b></div>`:""}
@@ -1033,7 +1035,7 @@ function renderGastos(){
     if(x._tipo==="restocks"){ const pz=(x.items||[]).reduce((a,i)=>a+(+i.q||0),0); return `${pz} piezas${x.notas?" · "+esc(x.notas):""}`; }
     if(x._tipo==="prestamos") return `${esc(x.quien||"")} tomó prestado${x.motivo?" · "+esc(x.motivo):""}`;
     if(x._tipo==="abonosPrestamo"){ const pr=F.prestamos.concat(F.borrados).find(y=>y.id===x.prestamo); return `abono${pr? " de "+esc(pr.quien||""):""}${x.notas?" · "+esc(x.notas):""}`; } return ""; };
-  const bs = F.borrados.filter(x=>!x.borradoCon).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
+  const bs = F.borrados.filter(x=>TIPO[x._tipo] && !x.borradoCon).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
   $("#gBorrados").innerHTML = bs.length? `<details class="card" style="opacity:.85"><summary><strong>Borrados (${bs.length})</strong> <span class="meta">· siguen en el historial, ya no cuentan en las cuentas</span></summary><div class="list" style="margin-top:10px">${bs.map(x=>{
       const ligados = F.borrados.filter(y=>y.borradoCon===x.id);
       return `<div class="item" style="background:transparent;border-style:dashed"><div class="row between" style="flex-wrap:wrap;gap:6px"><strong style="color:var(--muted)"><s>${TIPO[x._tipo]||""} · ${money(x._tipo==="restocks"? x.total : x.monto)}</s></strong><span class="pill plain">Borrado el ${x.borrado?fecha(x.borrado):""}${x.borradoPor?" por "+esc(x.borradoPor):""}</span></div>
@@ -1239,6 +1241,189 @@ document.addEventListener("click", e=>{
   }
 });
 document.addEventListener("change", e=>{ if(e.target.id==="gMes"){ gMesSel=e.target.value; renderGastos(); } });
+/* ===================== DECANTS ===================== */
+const DEC_CFG_DEF = {precio5:80, precio10:150, frasco5:2.38, frasco10:2.60, etiqueta:0.87, merma:0, diaPaga:5, provisional:true};
+function decCfg(){ const f=finz(); if(f.decCfg) return Object.assign({}, DEC_CFG_DEF, f.decCfg); const o=Object.values(OTROS).map(d=>d&&d.finanzas&&d.finanzas.decCfg).find(Boolean); return Object.assign({}, DEC_CFG_DEF, o||{}); }
+function proxPaga(){ const dp=+decCfg().diaPaga, d=new Date(hoyISO()+"T12:00:00"); let n=(dp-d.getDay()+7)%7; if(n===0) n=7; return addDays(hoyISO(), n); }
+function precioDec(a, ml){ const c=decCfg(); return +(ml===5? (a.precio5||c.precio5) : (a.precio10||c.precio10)) || 0; }
+function costoMlDec(a){ return (+a.costo||0) / Math.max(1, +a.ml||100); }
+function costoDec(a, ml){ const c=decCfg(); return costoMlDec(a)*(ml+(+c.merma||0)) + (ml===5? +c.frasco5 : +c.frasco10) + (+c.etiqueta||0); }
+function usadoAbierto(a, ventas){ const c=decCfg(); let ml=0; ventas.forEach(v=>(v.items||[]).forEach(it=>{ if(it.abierto===a.id) ml += (+it.q||0)*((+it.ml||0)+(+c.merma||0)); })); return ml + (+a.ajuste||0); }
+function pagadoDec(v, abonos){ return (+v.pagado||0) + abonos.filter(x=>x.venta===v.id).reduce((s,x)=>s+(+x.monto||0),0); }
+function abiertosPorPerfume(){ const m={}; const add=f=>((f&&f.abiertos)||[]).forEach(a=>{ if(a&&!a.borrado&&a.perfume) m[a.perfume]=(m[a.perfume]||0)+1; }); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
+let dMesSel = null;
+function renderDecants(){
+  if(!$("#v-decants")) return;
+  const F=todasFin(), c=decCfg(), hoy=hoyISO(), mes=hoy.slice(0,7);
+  if(!dMesSel) dMesSel=mes;
+  const vent=F.ventasDec, abs=F.abonosDec;
+  const piezas = v=>(v.items||[]).reduce((s,i)=>s+(+i.q||0),0);
+  const ganV = v=>(v.items||[]).reduce((s,i)=>s+(+i.q||0)*((+i.precio||0)-(+i.costo||0)),0);
+  const vMes=vent.filter(v=>(v.fecha||"").startsWith(mes)), vHoy=vent.filter(v=>v.fecha===hoy);
+  const fiado = vent.map(v=>({v, saldo:Math.max(0,(+v.total||0)-pagadoDec(v,abs))})).filter(x=>x.saldo>0.5).sort((a,b)=>(a.v.cobrar||"").localeCompare(b.v.cobrar||""));
+  const totFiado = fiado.reduce((s,x)=>s+x.saldo,0);
+  $("#dTiles").innerHTML = [
+    [vHoy.reduce((s,v)=>s+piezas(v),0), `decants vendidos hoy · ${money(vHoy.reduce((s,v)=>s+(+v.total||0),0))}`],
+    [money(vMes.reduce((s,v)=>s+(+v.total||0),0)), `vendido este mes · ${vMes.reduce((s,v)=>s+piezas(v),0)} decants`],
+    [money(vMes.reduce((s,v)=>s+ganV(v),0)), "ganancia estimada del mes"],
+    [money(totFiado), fiado.length? `fiado por cobrar · ${fiado.length} persona${fiado.length===1?"":"s"}` : "nadie les debe"]
+  ].map(([v,t])=>`<div class="tile"><b>${v}</b><span>${t}</span></div>`).join("");
+  // fiado
+  $("#dFiadoTxt").textContent = `Próximo día de paga: ${fecha(proxPaga())}`;
+  $("#dFiado").innerHTML = fiado.length? fiado.map(({v,saldo})=>{ const venc = v.cobrar && v.cobrar<=hoy;
+    return `<div class="item ${venc?"due":"soon"}" style="display:grid;gap:6px"><div class="row between" style="flex-wrap:wrap;gap:6px"><strong>${esc(v.cliente||"Sin nombre")}</strong><span class="pill ${venc?"bad":"warn"}">Debe ${money(saldo)}</span></div>
+      <div class="meta">${fecha(v.fecha)}${v.lugar?" · "+esc(v.lugar):""} · ${(v.items||[]).map(i=>`${i.q} × ${esc(i.n)} ${i.ml} ml`).join(", ")} · total ${money(v.total)}</div>
+      <div class="meta">${v.cobrar? (venc? `Ya toca cobrar (desde el ${fecha(v.cobrar)})` : `Cobrar el ${fecha(v.cobrar)}`) : ""}${v.tel?" · Tel. "+esc(v.tel):""}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><button class="small" data-abdec="${v.id}">Registrar abono</button><button class="small ghost" data-liqdec="${v.id}">Ya pagó todo</button></div></div>`; }).join("") : `<p class="empty">Nadie les debe decants. Cuando vendan fiado, aquí aparece a quién cobrarle y cuándo.</p>`;
+  // abiertos
+  const ab = F.abiertos.map(a=>{ const usado=usadoAbierto(a, vent), resta=Math.max(0,(+a.ml||0)-usado); return {a, usado, resta}; }).sort((x,y)=>(!!x.a.terminado)-(!!y.a.terminado) || (y.a.fecha||"").localeCompare(x.a.fecha||""));
+  const activos = ab.filter(x=>!x.a.terminado);
+  $("#dAbTxt").textContent = activos.length? `${activos.length} abierto${activos.length===1?"":"s"} · ${Math.round(activos.reduce((s,x)=>s+x.resta,0))} ml en total` : "";
+  $("#dAbiertos").innerHTML = ab.length? ab.map(({a,usado,resta})=>{
+    const pct = a.ml? Math.max(0,Math.min(100, Math.round(resta/a.ml*100))) : 0, m=(+c.merma||0);
+    const n5=Math.floor(resta/(5+m)), n10=Math.floor(resta/(10+m)), bajo = !a.terminado && resta < 10+m;
+    const g5=precioDec(a,5)-costoDec(a,5), g10=precioDec(a,10)-costoDec(a,10);
+    return `<div class="item ${a.terminado?"okk": bajo?"due":""}" style="display:grid;gap:6px;${a.terminado?"opacity:.6":""}">
+      <div class="row between" style="flex-wrap:wrap;gap:6px"><strong>${esc(a.n)} <span class="meta">${esc(a.m||"")}</span></strong><span class="pill ${a.terminado?"good": bajo?"bad":"plain"}">${a.terminado? "Terminado" : `Quedan ${Math.round(resta)} ml`}</span></div>
+      <div class="prog"><i style="width:${pct}%"></i></div>
+      <div class="meta">Frasco de ${a.ml} ml abierto el ${fecha(a.fecha)} · usados ${Math.round(usado)} ml${a.terminado?"":` · alcanza para ${n5} de 5 ml o ${n10} de 10 ml`}</div>
+      <div class="num">5 ml a ${money(precioDec(a,5))} (ganas ${money(g5)}) · 10 ml a ${money(precioDec(a,10))} (ganas ${money(g10)})</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${a._mio? `${a.terminado? `<button class="small ghost" data-reabdec="${a.id}">Volver a abrir</button>` : `<button class="small ghost" data-editab="${a.id}">Corregir ml o precio</button><button class="small ghost" data-termdec="${a.id}">Ya se acabó</button>`}<button class="small quiet" data-deldec="abiertos|${a.id}">Borrar</button>` : `<span class="meta">Abierto por ${esc(a._quien)}</span>`}</div></div>`; }).join("")
+    : `<p class="empty">Todavía no abren frascos. Usa "Abrir frasco para decants": se descuenta 1 pieza de tu stock y aquí ves cuántos ml quedan.</p>`;
+  // ventas
+  const meses=[...new Set([mes].concat(vent.map(v=>(v.fecha||"").slice(0,7)).filter(Boolean)))].sort().reverse();
+  const nomMes=m=>new Date(m+"-15T12:00:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"});
+  $("#dMes").innerHTML = meses.map(m=>`<option value="${m}" ${m===dMesSel?"selected":""}>${nomMes(m)}</option>`).join("");
+  const vSel = vent.filter(v=>(v.fecha||"").startsWith(dMesSel)).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"") || (b.hora||"").localeCompare(a.hora||""));
+  const porDia={}; vSel.forEach(v=>{ (porDia[v.fecha]=porDia[v.fecha]||[]).push(v); });
+  $("#dVentas").innerHTML = vSel.length? Object.entries(porDia).map(([d,vs])=>{
+    const tot=vs.reduce((s,v)=>s+(+v.total||0),0), pz=vs.reduce((s,v)=>s+piezas(v),0), lug=[...new Set(vs.map(v=>v.lugar).filter(Boolean))];
+    return `<div style="display:grid;gap:6px"><div class="meta"><strong>${fecha(d)}</strong> · ${pz} decants · ${money(tot)} · ganancia ${money(vs.reduce((s,v)=>s+ganV(v),0))}${lug.length?" · "+esc(lug.join(", ")):""}</div>
+      ${vs.map(v=>{ const sal=Math.max(0,(+v.total||0)-pagadoDec(v,abs)); return `<div class="item"><div class="row between" style="gap:6px;flex-wrap:wrap"><strong>${(v.items||[]).map(i=>`${i.q} × ${esc(i.n)} ${i.ml} ml`).join(", ")}</strong><span class="num">${money(v.total)}</span></div>
+        <div class="meta">${v.cliente? esc(v.cliente)+" · ":""}${v.lugar? esc(v.lugar)+" · ":""}${sal>0.5? `debe ${money(sal)}` : "pagado"} · vendió ${esc(v.vend||v._quien)}</div>
+        ${v._mio? `<div class="row"><button class="small quiet" data-deldec="ventasDec|${v.id}">Borrar</button></div>`:""}</div>`; }).join("")}</div>`; }).join("")
+    : `<p class="empty">No hay ventas de decants en este mes.</p>`;
+  // historial
+  const TIPO={abiertos:"Frasco abierto", ventasDec:"Venta de decants", abonosDec:"Abono de decants"};
+  const bs = F.borrados.filter(x=>TIPO[x._tipo] && !x.borradoCon).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
+  $("#dBorrados").innerHTML = bs.length? `<details class="card" style="opacity:.85"><summary><strong>Borrados (${bs.length})</strong> <span class="meta">· siguen en el historial, ya no cuentan</span></summary><div class="list" style="margin-top:10px">${bs.map(x=>`<div class="item" style="background:transparent;border-style:dashed"><div class="row between" style="flex-wrap:wrap;gap:6px"><strong style="color:var(--muted)"><s>${TIPO[x._tipo]} · ${x._tipo==="abiertos"? esc(x.n) : money(x._tipo==="ventasDec"? x.total : x.monto)}</s></strong><span class="pill plain">Borrado el ${x.borrado?fecha(x.borrado):""}${x.borradoPor?" por "+esc(x.borradoPor):""}</span></div>
+    <div class="meta">${x.fecha?fecha(x.fecha):""}${x._tipo==="ventasDec"? " · "+(x.items||[]).map(i=>`${i.q} × ${esc(i.n)} ${i.ml} ml`).join(", ") : x._tipo==="abiertos"? ` · frasco de ${x.ml} ml (regresó al stock)` : ""}</div>
+    ${x._mio? `<div class="row"><button class="small quiet" data-restfin="${x._tipo}|${x.id}">Restaurar</button></div>`:""}</div>`).join("")}</div></details>` : "";
+}
+function formCfgDec(){
+  const c=decCfg(), dias=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+  abrir(`<h3 id="ovTitle">Precios y costos de los decants</h3>
+  <form id="fCfgDec" style="display:grid;gap:10px">
+    ${c.provisional? `<p class="pill warn" style="white-space:normal">Estos precios son provisionales. Pon los tuyos y se usan en todas las ventas nuevas.</p>`:""}
+    <div class="fields">
+      <label for="dcP5">Precio decant 5 ml ($)<input id="dcP5" type="number" inputmode="decimal" min="0" step="any" value="${c.precio5}"></label>
+      <label for="dcP10">Precio decant 10 ml ($)<input id="dcP10" type="number" inputmode="decimal" min="0" step="any" value="${c.precio10}"></label>
+      <label for="dcF5">Costo frasco 5 ml ($)<input id="dcF5" type="number" inputmode="decimal" min="0" step="any" value="${c.frasco5}"></label>
+      <label for="dcF10">Costo frasco 10 ml ($)<input id="dcF10" type="number" inputmode="decimal" min="0" step="any" value="${c.frasco10}"></label>
+      <label for="dcEt">Costo etiqueta ($)<input id="dcEt" type="number" inputmode="decimal" min="0" step="any" value="${c.etiqueta}"></label>
+      <label for="dcMe">ml que se pierden por decant<input id="dcMe" type="number" inputmode="decimal" min="0" step="any" value="${c.merma}"></label>
+      <label for="dcDia">Día de paga en las fábricas<select id="dcDia">${dias.map((d,i)=>`<option value="${i}" ${i==c.diaPaga?"selected":""}>${d}</option>`).join("")}</select></label>
+    </div>
+    <p class="meta">El costo de cada decant = lo que costó el perfume por ml × ml + frasco + etiqueta. Cada frasco abierto puede tener su propio precio si es más caro.</p>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar</button></div>
+  </form>`);
+  $("#fCfgDec").addEventListener("submit", ev=>{ ev.preventDefault();
+    finz().decCfg = {precio5:+$("#dcP5").value||0, precio10:+$("#dcP10").value||0, frasco5:+$("#dcF5").value||0, frasco10:+$("#dcF10").value||0, etiqueta:+$("#dcEt").value||0, merma:+$("#dcMe").value||0, diaPaga:+$("#dcDia").value, provisional:false};
+    saveFinanzas(); cerrar(); renderAll(); toast("Precios de decants guardados"); });
+}
+function formAbrirDec(a){
+  const edit=!!a, lista=perfumes().filter(p=>edit || p.stock==null || p.stock>0).slice().sort((x,y)=>(x.m+x.n).localeCompare(y.m+y.n)), c=decCfg();
+  a = a || {fecha:hoyISO(), ml:100};
+  abrir(`<h3 id="ovTitle">${edit? "Corregir frasco abierto" : "Abrir frasco para decants"}</h3>
+  <form id="fAbDec" style="display:grid;gap:10px">
+    ${edit? `<p class="meta"><strong>${esc(a.n)}</strong> · ${esc(a.m||"")}</p>` : `<p class="meta">Se descuenta 1 pieza de este perfume del stock de frascos completos.</p>
+    <label for="adPerf">Perfume<select id="adPerf" required><option value="">Elige un perfume…</option>${lista.map(p=>`<option value="${p.id}">${esc(p.m+" · "+p.n)}${p.stock!=null? " ("+p.stock+" en stock)":""}</option>`).join("")}</select></label>`}
+    <div class="fields">
+      <label for="adMl">Tamaño del frasco (ml)<input id="adMl" type="number" inputmode="decimal" min="1" step="any" required value="${a.ml}"></label>
+      <label for="adCosto">Lo que nos costó el frasco ($)<input id="adCosto" type="number" inputmode="decimal" min="0" step="any" value="${a.costo!=null? a.costo : ""}"></label>
+      ${edit? `<label for="adResta">ml que le quedan de verdad<input id="adResta" type="number" inputmode="decimal" min="0" step="any" value="${Math.round(Math.max(0,a.ml-usadoAbierto(a, todasFin().ventasDec)))}"></label>` : `<label for="adFecha">Fecha<input id="adFecha" type="date" required value="${a.fecha}"></label>`}
+      <label for="adP5">Precio 5 ml ($)<input id="adP5" type="number" inputmode="decimal" min="0" step="any" placeholder="${c.precio5} (general)" value="${a.precio5||""}"></label>
+      <label for="adP10">Precio 10 ml ($)<input id="adP10" type="number" inputmode="decimal" min="0" step="any" placeholder="${c.precio10} (general)" value="${a.precio10||""}"></label>
+    </div>
+    <p class="meta">Deja los precios vacíos para usar el precio general. Ponle otro si es un perfume más caro.</p>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">${edit?"Guardar":"Abrir frasco"}</button></div>
+  </form>`);
+  if(!edit) $("#adPerf").addEventListener("change", ()=>{ const p=lista.find(x=>x.id===$("#adPerf").value); if(p) $("#adCosto").value = Math.round(costoDe(p,1))||""; });
+  $("#fAbDec").addEventListener("submit", ev=>{ ev.preventDefault();
+    const ml=+$("#adMl").value||100, costo=+$("#adCosto").value||0, p5=+$("#adP5").value||0, p10=+$("#adP10").value||0;
+    if(edit){ const x=finz().abiertos.find(y=>y.id===a.id); if(!x) return; Object.assign(x,{ml,costo,precio5:p5||null,precio10:p10||null});
+      const sinAjuste=usadoAbierto(Object.assign({},x,{ajuste:0}), todasFin().ventasDec); x.ajuste = Math.max(0, ml - (+$("#adResta").value||0) - sinAjuste);
+      saveFinanzas(); cerrar(); renderAll(); toast("Frasco actualizado"); return; }
+    const p=lista.find(x=>x.id===$("#adPerf").value); if(!p){ toast("Elige un perfume"); return; }
+    finz().abiertos.push({id:uid(), perfume:p.id, n:p.n, m:p.m, ml, costo, precio5:p5||null, precio10:p10||null, fecha:$("#adFecha").value, ajuste:0, por:yo()});
+    saveFinanzas(); cerrar(); renderAll(); toast(`${p.n} abierto para decants: 1 pieza menos en stock`); });
+}
+function formVentaDec(){
+  const F=todasFin(), vent=F.ventasDec, c=decCfg();
+  const act=F.abiertos.filter(a=>!a.terminado).map(a=>({a, resta:Math.max(0,a.ml-usadoAbierto(a,vent))})).filter(x=>x.resta>0).sort((x,y)=>(x.a.n).localeCompare(y.a.n));
+  if(!act.length){ toast("Primero abre un frasco para decants"); formAbrirDec(); return; }
+  const lugares=[...new Set(vent.map(v=>v.lugar).filter(Boolean))].slice(0,20), q={};
+  abrir(`<h3 id="ovTitle">Vender decants</h3>
+  <form id="fVDec" style="display:grid;gap:10px">
+    <div class="list" id="vdLines">${act.map(({a,resta})=>`<div class="item" style="display:grid;gap:6px"><div class="row between" style="gap:6px;flex-wrap:wrap"><strong>${esc(a.n)}</strong><span class="meta">quedan ${Math.round(resta)} ml</span></div>
+      <div class="row" style="gap:14px;flex-wrap:wrap">${[5,10].map(ml=>`<span class="row" style="gap:6px;align-items:center"><span class="meta">${ml} ml · ${money(precioDec(a,ml))}</span><span class="qty"><button type="button" class="small ghost" data-vdq="${a.id}|${ml}|-1" aria-label="Quitar ${ml} ml de ${esc(a.n)}">−</button><input readonly id="vd_${a.id}_${ml}" value="0" aria-label="${ml} ml de ${esc(a.n)}"><button type="button" class="small ghost" data-vdq="${a.id}|${ml}|1" aria-label="Agregar ${ml} ml de ${esc(a.n)}">+</button></span></span>`).join("")}</div></div>`).join("")}</div>
+    <div class="fields">
+      <label for="vdLugar">¿Dónde?<input id="vdLugar" list="vdLugares" placeholder="Ej. Fábrica de calzado, Instagram" value="${esc(lugares[0]||"")}"><datalist id="vdLugares">${lugares.concat(["Instagram","Facebook","TikTok","WhatsApp"]).map(l=>`<option value="${esc(l)}">`).join("")}</datalist></label>
+      <label for="vdPago">¿Cómo pagó?<select id="vdPago"><option value="todo">Pagó todo</option><option value="fiado">Fiado / dejó una parte</option></select></label>
+    </div>
+    <div class="fields" id="vdFiado" style="display:none">
+      <label for="vdCli">Nombre<input id="vdCli" placeholder="Ej. Juan, línea 3"></label>
+      <label for="vdTel">Teléfono (opcional)<input id="vdTel" type="tel" inputmode="tel"></label>
+      <label for="vdAnt">¿Cuánto dejó hoy? ($)<input id="vdAnt" type="number" inputmode="decimal" min="0" step="any" value="0"></label>
+      <label for="vdCobrar">Cobrar el<input id="vdCobrar" type="date" value="${proxPaga()}"></label>
+    </div>
+    <div class="res" id="vdRes"></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar venta</button></div>
+  </form>`);
+  const items=()=>{ const out=[]; act.forEach(({a})=>[5,10].forEach(ml=>{ const n=q[a.id+"|"+ml]||0; if(n>0) out.push({abierto:a.id, perfume:a.perfume, n:a.n, ml, q:n, precio:precioDec(a,ml), costo:Math.round(costoDec(a,ml)*100)/100}); })); return out; };
+  const res=()=>{ const it=items(), t=it.reduce((s,i)=>s+i.q*i.precio,0), g=it.reduce((s,i)=>s+i.q*(i.precio-i.costo),0); $("#vdRes").innerHTML=`<div><small>Decants</small><b>${it.reduce((s,i)=>s+i.q,0)}</b></div><div><small>Total a cobrar</small><b>${money(t)}</b></div><div><small>Ganancia</small><b>${money(g)}</b></div>`; };
+  $("#fVDec").addEventListener("click", e=>{ const b=e.target.closest("[data-vdq]"); if(!b) return; const [id,ml,d]=b.dataset.vdq.split("|"), k=id+"|"+ml, x=act.find(y=>y.a.id===id), m=(+c.merma||0);
+    const usadoForm=[5,10].reduce((s,mm)=>s+(q[id+"|"+mm]||0)*(mm+m),0), nuevo=Math.max(0,(q[k]||0)+(+d));
+    if(+d>0 && usadoForm+(+ml)+m > x.resta+0.01){ toast(`Ya no alcanza el ${x.a.n}`); return; }
+    q[k]=nuevo; $(`#vd_${id}_${ml}`).value=nuevo; res(); });
+  $("#vdPago").addEventListener("change", ()=>{ $("#vdFiado").style.display = $("#vdPago").value==="fiado"? "" : "none"; });
+  res();
+  $("#fVDec").addEventListener("submit", ev=>{ ev.preventDefault();
+    const it=items(); if(!it.length){ toast("Agrega al menos un decant"); return; }
+    const total=it.reduce((s,i)=>s+i.q*i.precio,0), fiado=$("#vdPago").value==="fiado";
+    if(fiado && !$("#vdCli").value.trim()){ toast("Escribe el nombre de quien te debe"); return; }
+    const pag = fiado? Math.min(total, +$("#vdAnt").value||0) : total, d=new Date();
+    finz().ventasDec.push({id:uid(), fecha:hoyISO(), hora:d.toTimeString().slice(0,5), items:it, total, pagado:pag, lugar:$("#vdLugar").value.trim(), cliente:fiado? $("#vdCli").value.trim() : "", tel:fiado? $("#vdTel").value.trim() : "", cobrar:fiado? $("#vdCobrar").value : null, vend:yo(), por:yo()});
+    saveFinanzas(); cerrar(); renderAll(); toast(fiado? `Venta guardada: te deben ${money(total-pag)}` : `Venta guardada: ${money(total)}`); });
+}
+function formAbonoDec(vid, todo){
+  const F=todasFin(), v=F.ventasDec.find(x=>x.id===vid); if(!v) return; const sal=Math.max(0,(+v.total||0)-pagadoDec(v,F.abonosDec));
+  if(todo){ finz().abonosDec.push({id:uid(), venta:vid, monto:sal, fecha:hoyISO(), por:yo()}); saveFinanzas(); renderAll(); toast(`${v.cliente||"Cliente"} ya pagó todo`); return; }
+  abrir(`<h3 id="ovTitle">Abono de ${esc(v.cliente||"cliente")}</h3>
+  <form id="fAbDecP" style="display:grid;gap:10px"><p class="meta">Debe <strong>${money(sal)}</strong> de ${money(v.total)}.</p>
+    <div class="fields"><label for="adm">¿Cuánto pagó? ($)<input id="adm" type="number" inputmode="decimal" min="1" max="${sal}" step="any" required></label><label for="adf">Fecha<input id="adf" type="date" value="${hoyISO()}"></label></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar abono</button></div></form>`);
+  $("#fAbDecP").addEventListener("submit", ev=>{ ev.preventDefault(); const m=Math.min(sal,+$("#adm").value||0); if(m<=0) return;
+    finz().abonosDec.push({id:uid(), venta:vid, monto:m, fecha:$("#adf").value, por:yo()}); saveFinanzas(); cerrar(); renderAll(); toast("Abono guardado"); });
+}
+document.addEventListener("click", e=>{
+  let b;
+  if(e.target.closest("#btnVenderDec")) formVentaDec();
+  else if(e.target.closest("#btnAbrirDec")) formAbrirDec();
+  else if(e.target.closest("#btnCfgDec")) formCfgDec();
+  else if((b=e.target.closest("[data-abdec]"))) formAbonoDec(b.dataset.abdec);
+  else if((b=e.target.closest("[data-liqdec]"))) formAbonoDec(b.dataset.liqdec, true);
+  else if((b=e.target.closest("[data-editab]"))){ const a=finz().abiertos.find(x=>x.id===b.dataset.editab); if(a) formAbrirDec(a); }
+  else if((b=e.target.closest("[data-termdec],[data-reabdec]"))){ const id=b.dataset.termdec||b.dataset.reabdec, a=finz().abiertos.find(x=>x.id===id); if(!a) return; if(b.dataset.termdec) a.terminado=hoyISO(); else delete a.terminado; saveFinanzas(); renderAll(); toast(b.dataset.termdec? "Frasco marcado como terminado" : "Frasco abierto otra vez"); }
+  else if((b=e.target.closest("[data-deldec]"))){
+    if(!b.dataset.ok){ b.dataset.ok="1"; b.textContent="¿Seguro? Toca otra vez"; return; }
+    const [k,id]=b.dataset.deldec.split("|"), f=finz(), x=(f[k]||[]).find(y=>y.id===id); if(!x) return;
+    x.borrado=hoyISO(); x.borradoPor=yo();
+    if(k==="ventasDec") f.abonosDec.filter(y=>y.venta===id&&!y.borrado).forEach(y=>{ y.borrado=hoyISO(); y.borradoPor=yo(); y.borradoCon=id; });
+    saveFinanzas(); renderAll(); toast("Borrado: queda en el historial");
+  }
+});
+document.addEventListener("change", e=>{ if(e.target.id==="dMes"){ dMesSel=e.target.value; renderDecants(); } });
 /* ---- Fotos / archivos de la nota de Ian ---- */
 function leerDataURL(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file); }); }
 async function comprimirImagen(file, maxLargo){
@@ -1632,7 +1817,7 @@ $("#btnNuevoPerf").addEventListener("click", ()=>{
 });
 
 /* ===================== NAVEGACIÓN ===================== */
-const VIEWS = ["hoy","estados","aroma","clientes","ventas","gastos","socios","compras","mensajes","calculadora","catalogo"];
+const VIEWS = ["hoy","estados","aroma","clientes","ventas","gastos","decants","socios","compras","mensajes","calculadora","catalogo"];
 function route(){
   let v = (location.hash||"").slice(1); if(!VIEWS.includes(v)) v = "hoy";
   VIEWS.forEach(x=>{ document.getElementById("v-"+x).classList.toggle("on", x===v); });
@@ -1660,7 +1845,7 @@ function normalizar(){
 }
 function seguro(fn){ try{ fn(); }catch(e){ console.error(e); } }
 function todosPedidos(){ const out=[]; const add=(cl,dueno,mio)=>(cl||[]).forEach(c=>(c&&c.pedidos||[]).forEach(pd=>{ if(pd) out.push({c, p:pd, vend: pd.vend || c.vend || dueno, mio}); })); add((S.clientes||[]).concat((S.borrados||[]).filter(c=>!c.sinEntregar)), yo(), true); Object.values(OTROS).forEach(d=>{ if(d) add((d.clientes||[]).concat((d.borrados||[]).filter(c=>c&&!c.sinEntregar)), d.persona||"Santiago", false); }); return out; }
-function existencias(){ const v={}; Object.values(OTROS).forEach(d=>((d&&d.clientes)||[]).concat(((d&&d.borrados)||[]).filter(c=>c&&!c.sinEntregar)).forEach(c=>(c&&c.pedidos||[]).forEach(pd=>(pd&&pd.items||[]).forEach(it=>{ if(it&&it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); })))); (S.clientes||[]).concat((S.borrados||[]).filter(c=>!c.sinEntregar)).forEach(c=>(c.pedidos||[]).forEach(pd=>(pd.items||[]).forEach(it=>{ if(it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); }))); const rq = restockPorPerfume(); perfumes().forEach(p=>{ if(p.compra!=null || rq[p.id]) p.stock=(+p.compra||0)+(rq[p.id]||0)-(v[p.id]||0); }); }
+function existencias(){ const v={}; Object.values(OTROS).forEach(d=>((d&&d.clientes)||[]).concat(((d&&d.borrados)||[]).filter(c=>c&&!c.sinEntregar)).forEach(c=>(c&&c.pedidos||[]).forEach(pd=>(pd&&pd.items||[]).forEach(it=>{ if(it&&it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); })))); (S.clientes||[]).concat((S.borrados||[]).filter(c=>!c.sinEntregar)).forEach(c=>(c.pedidos||[]).forEach(pd=>(pd.items||[]).forEach(it=>{ if(it.id) v[it.id]=(v[it.id]||0)+(+it.q||0); }))); const rq = restockPorPerfume(), ab = abiertosPorPerfume(); perfumes().forEach(p=>{ if(p.compra!=null || rq[p.id]) p.stock=(+p.compra||0)+(rq[p.id]||0)-(v[p.id]||0)-(ab[p.id]||0); }); }
 let vSocio = null;
 function renderVentas(){
   if(!vSocio) vSocio = yo();
@@ -1680,7 +1865,7 @@ document.addEventListener("click", e=>{
   if((b=e.target.closest("[data-vs]"))){ vSocio = b.dataset.vs; renderVentas(); }
   else if((b=e.target.closest("[data-yo]"))){ S.cfg = S.cfg||{}; S.cfg.persona = b.dataset.yo; vSocio = b.dataset.yo; save(); renderAll(); toast("Ahora registras como "+b.dataset.yo); }
 });
-function renderAll(){ normalizar(); existencias(); [renderHoy, renderSocios, renderCompras, renderEstado, renderAroma].forEach(seguro); if(aromaModo==="may") seguro(renderMayoreo); [renderClientes, renderVentas, renderGastos, renderMensajes, renderCalc, renderCatalogo].forEach(seguro); }
+function renderAll(){ normalizar(); existencias(); [renderHoy, renderSocios, renderCompras, renderEstado, renderAroma].forEach(seguro); if(aromaModo==="may") seguro(renderMayoreo); [renderClientes, renderVentas, renderGastos, renderDecants, renderMensajes, renderCalc, renderCatalogo].forEach(seguro); }
 seguro(fillSelects); seguro(route); initStore().catch(e=>console.error(e));
 
 /* parallax: el titular se mueve más lento que el fondo; las nubes siguen ligeramente el mouse */
@@ -1753,5 +1938,83 @@ seguro(fillSelects); seguro(route); initStore().catch(e=>console.error(e));
   new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{ if(n.nodeType===1) scan(n); }))).observe(document.body,{childList:true,subtree:true});
   document.addEventListener("mousedown", e=>{ if(abierto && !abierto.panel.contains(e.target) && e.target!==abierto.btn && !abierto.btn.contains(e.target)) cerrarDD(); });
   addEventListener("resize", cerrarDD);
+  document.addEventListener("scroll", e=>{ if(abierto && !abierto.panel.contains(e.target)) abierto.pos(); }, true);
+})();
+
+/* calendarios personalizados: el <input type="date"> real sigue funcionando por debajo */
+(function(){
+  const P = HTMLInputElement.prototype, d0 = Object.getOwnPropertyDescriptor(P,"value");
+  Object.defineProperty(P,"value",{configurable:true,enumerable:d0.enumerable,get(){return d0.get.call(this);},set(v){d0.set.call(this,v); if(this._dp) this._dp.sync();}});
+  const MES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"], SEM=["L","M","M","J","V","S","D"];
+  const iso=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const hoyS=()=>{ const t=new Date(); return iso(t.getFullYear(),t.getMonth(),t.getDate()); };
+  const parse=s=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||""); return m? {y:+m[1],m:+m[2]-1,d:+m[3]} : null; };
+  const bonito=s=>{ const p=parse(s); if(!p) return ""; const f=new Date(p.y,p.m,p.d); return f.toLocaleDateString("es-MX",{weekday:"short",day:"numeric",month:"short",year:"numeric"}).replace(/\./g,""); };
+  const ICON='<svg class="dp-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
+  let abierto=null;
+  function cerrar(foco){ if(!abierto) return; const a=abierto; abierto=null; a.panel.remove(); a.btn.setAttribute("aria-expanded","false"); if(foco) a.btn.focus(); }
+  function enhance(inp){
+    if(inp._dp || inp.type!=="date") return;
+    const btn=document.createElement("button"); btn.type="button"; btn.className="dd-btn dp-btn"; btn.setAttribute("aria-haspopup","dialog"); btn.setAttribute("aria-expanded","false");
+    btn.innerHTML=ICON+'<span></span>'; const txt=btn.querySelector("span");
+    inp.classList.add("dp-native"); inp.tabIndex=-1; inp.setAttribute("aria-hidden","true"); inp.insertAdjacentElement("afterend",btn);
+    const lab=inp.closest("label") || (inp.id && document.querySelector(`label[for="${inp.id}"]`));
+    if(lab){ const t=(lab.childNodes[0]&&lab.childNodes[0].textContent||"").trim(); if(t) btn.setAttribute("aria-label", t); }
+    const sync=()=>{ const v=inp.value; txt.className=v?"":"dp-ph"; txt.textContent = v? bonito(v) : "Elige una fecha"; btn.disabled=inp.disabled; };
+    const fijar=(v)=>{ const cambia=inp.value!==v; inp.value=v; cerrar(true); if(cambia){ inp.dispatchEvent(new Event("input",{bubbles:true})); inp.dispatchEvent(new Event("change",{bubbles:true})); } };
+    const fuera=(s)=> (inp.min && s<inp.min) || (inp.max && s>inp.max);
+    const abrir=()=>{
+      if(abierto && abierto.inp===inp){ cerrar(); return; } cerrar();
+      const sel=parse(inp.value) || parse(hoyS()); let vy=sel.y, vm=sel.m, act=inp.value || hoyS();
+      const panel=document.createElement("div"); panel.className="dd-panel dp-panel"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-label","Elegir fecha");
+      document.body.appendChild(panel);
+      const pinta=()=>{
+        const primero=(new Date(vy,vm,1).getDay()+6)%7, dias=new Date(vy,vm+1,0).getDate(), prev=new Date(vy,vm,0).getDate(), hoy=hoyS();
+        let celdas=""; for(let i=0;i<42;i++){ let y=vy,m=vm,d=i-primero+1, cls="dp-dia";
+          if(d<1){ m=vm-1; d=prev+d; cls+=" fuera"; } else if(d>dias){ m=vm+1; d=d-dias; cls+=" fuera"; }
+          const f=new Date(y,m,d), s=iso(f.getFullYear(),f.getMonth(),f.getDate());
+          if(s===hoy) cls+=" hoy"; if(s===act) cls+=" act";
+          celdas+=`<button type="button" class="${cls}" data-d="${s}" tabindex="${s===act?0:-1}" aria-selected="${s===inp.value}" ${fuera(s)?'aria-disabled="true"':""} aria-label="${f.toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}">${f.getDate()}</button>`;
+          if(i===34 && new Date(vy,vm,1).getDay()!==0 && primero+dias<=35) break; }
+        panel.innerHTML=`<div class="dp-head"><button type="button" class="dp-nav" data-nav="-1" aria-label="Mes anterior">‹</button><span class="dp-mes" aria-live="polite">${MES[vm]} ${vy}</span><button type="button" class="dp-nav" data-nav="1" aria-label="Mes siguiente">›</button></div>
+          <div class="dp-sem" aria-hidden="true">${SEM.map(s=>`<span>${s}</span>`).join("")}</div><div class="dp-grid">${celdas}</div>
+          <div class="dp-pie"><button type="button" data-hoy>Hoy</button>${inp.required?"":`<button type="button" data-borrar>Borrar</button>`}</div>`;
+        pos();
+      };
+      const pos=()=>{ const r=btn.getBoundingClientRect(), vh=innerHeight; if(r.bottom<0||r.top>vh){ cerrar(); return; }
+        panel.style.left=Math.max(8, Math.min(r.left, innerWidth-panel.offsetWidth-8))+"px";
+        const abajo=vh-r.bottom-8; panel.style.top = (abajo<panel.offsetHeight+6 && r.top-8>abajo)? Math.max(8, r.top-6-panel.offsetHeight)+"px" : (r.bottom+6)+"px"; };
+      const mover=(s)=>{ act=s; const p=parse(s); if(p.y!==vy||p.m!==vm){ vy=p.y; vm=p.m; } pinta(); const b=panel.querySelector(`[data-d="${s}"]`); if(b) b.focus(); };
+      const suma=(s,n)=>{ const p=parse(s), f=new Date(p.y,p.m,p.d+n); return iso(f.getFullYear(),f.getMonth(),f.getDate()); };
+      panel.addEventListener("mousedown", e=>{ if(!e.target.closest("button")) e.preventDefault(); });
+      panel.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return;
+        if(b.dataset.nav){ vm+=+b.dataset.nav; if(vm<0){vm=11;vy--;} if(vm>11){vm=0;vy++;} pinta(); return; }
+        if(b.hasAttribute("data-hoy")){ fijar(hoyS()); return; }
+        if(b.hasAttribute("data-borrar")){ fijar(""); return; }
+        if(b.dataset.d && b.getAttribute("aria-disabled")!=="true") fijar(b.dataset.d); });
+      panel.addEventListener("keydown", e=>{
+        if(e.key==="Escape"){ e.preventDefault(); cerrar(true); return; }
+        if(!e.target.classList.contains("dp-dia")) return;
+        const m={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7}[e.key];
+        if(m){ e.preventDefault(); mover(suma(act,m)); }
+        else if(e.key==="PageUp"||e.key==="PageDown"){ e.preventDefault(); const p=parse(act), f=new Date(p.y,p.m+(e.key==="PageUp"?-1:1),Math.min(p.d,28)); mover(iso(f.getFullYear(),f.getMonth(),f.getDate())); }
+        else if(e.key==="Enter"||e.key===" "){ e.preventDefault(); if(e.target.getAttribute("aria-disabled")!=="true") fijar(e.target.dataset.d); }
+      });
+      btn.setAttribute("aria-expanded","true");
+      abierto={inp,btn,panel,pos};
+      pinta(); const b=panel.querySelector(`[data-d="${act}"]`); if(b) b.focus({preventScroll:true});
+    };
+    btn.addEventListener("click", abrir);
+    btn.addEventListener("keydown", e=>{ if(["ArrowDown","Enter"," "].includes(e.key) && !(abierto&&abierto.inp===inp)){ e.preventDefault(); abrir(); } });
+    inp.addEventListener("change", sync); inp.addEventListener("input", sync);
+    new MutationObserver(sync).observe(inp,{attributes:true,attributeFilter:["disabled","value"]});
+    inp._dp={sync}; sync();
+    if(lab && !lab._dp){ lab._dp=1; lab.addEventListener("click", e=>{ if(e.target===lab){ e.preventDefault(); btn.focus(); } }); }
+  }
+  const scan=(root)=>{ if(root.tagName==="INPUT") enhance(root); else if(root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(enhance); };
+  scan(document);
+  new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{ if(n.nodeType===1) scan(n); }))).observe(document.body,{childList:true,subtree:true});
+  document.addEventListener("mousedown", e=>{ if(abierto && !abierto.panel.contains(e.target) && !abierto.btn.contains(e.target)) cerrar(); });
+  addEventListener("resize", ()=>cerrar());
   document.addEventListener("scroll", e=>{ if(abierto && !abierto.panel.contains(e.target)) abierto.pos(); }, true);
 })();
