@@ -353,6 +353,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
     <a href="#clientes" data-v="clientes">Clientes</a>
     <a href="#ventas" data-v="ventas">Ventas por socio</a>
     <a href="#gastos" data-v="gastos">Gastos y Ian</a>
+    <a href="#decants" data-v="decants">Decants</a>
     <a href="#socios" data-v="socios">Socios</a>
     <a href="#compras" data-v="compras">Día de compra</a>
     <a href="#mensajes" data-v="mensajes">Mensajes</a>
@@ -529,6 +530,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
       <div class="row" style="gap:8px;align-items:center"><label for="dMes" class="meta" style="text-transform:none;letter-spacing:0">Mes</label><select id="dMes" style="width:auto"></select></div></div>
     <div class="list" id="dVentas"></div>
   </div>
+  <details class="card" id="dListaCard"><summary><strong>Lista de precios de decants</strong> <span class="meta">· tus perfumes en stock con tu regla de mercado</span></summary><div style="overflow:auto;margin-top:10px"><table class="t" id="dLista"></table></div></details>
   <div id="dBorrados"></div>
 </section>
 
@@ -633,7 +635,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795643979"></script>
+<script src="config.js?b=1795722551"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -682,7 +684,7 @@ async function arrancar(session){
   window.__SB__ = sb; window.__UID__ = uid;
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795643979"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795722551"; document.body.appendChild(sc);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");

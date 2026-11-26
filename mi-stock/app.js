@@ -1242,12 +1242,24 @@ document.addEventListener("click", e=>{
 });
 document.addEventListener("change", e=>{ if(e.target.id==="gMes"){ gMesSel=e.target.value; renderGastos(); } });
 /* ===================== DECANTS ===================== */
-const DEC_CFG_DEF = {precio5:80, precio10:150, frasco5:2.38, frasco10:2.60, etiqueta:0.87, merma:0, diaPaga:5, provisional:true};
+const DEC_CFG_DEF = {frasco5:2.38, frasco10:2.60, etiqueta:0.87, bolsa:1.09, merma:0, diaPaga:5, k5:2.2, k10:1.8, r10:1.6, min5:69, min10:119, extra5:10, extra10:20};
+/* Precios de Goat Decants (goatdecantsmx.com, 24 nov 2026) para la regla de mercado: [5 ml, 10 ml] */
+const GOAT = {"armaf-odyssey-mega":[70,100],"armaf-odyssey-mandarin-sky":[70,100],"afnan-9-am-dive-edp":[70,100],"afnan-9-pm-edp":[65,90],"armaf-odyssey-bahamas-tropical":[85,135],"maison-alhambra-jean-lowe-azure":[70,110],"lattafa-yara-candy-edp":[65,95],"lattafa-asad-elixir":[75,125],"rasasi-hawas-ice-edp":[75,135],"bharara-king":[70,120],"bharara-rome-pour-homme":[75,125],"emper-stallion-53-edp":[65,95],"ariana-grande-cloud-pink-edp":[85,150],"ariana-grande-sweet-like-candy-edp":[80,135],"jesus-del-pozo-halloween-man-x-edt":[75,125],"dolce-gabbana-light-blue-edt-tester":[100,155],"moschino-toy-2-pearl":[85,135],"versace-eros-flame-edp":[95,165],"ysl-y-edp-intense":[175,325]};
+const r9 = x => Math.ceil((x-9)/10)*10+9;
+function mlDe(p){ const m=/(\d+(?:\.\d+)?)/.exec((p&&p.ml)||""); return m? +m[1] : 100; }
+/* Regla de mercado +$10: 5 ml = el más alto entre Goat, costo×2.2 y $69, redondeado a 9, +$10.
+   10 ml = el más alto entre Goat 10 ml, costo10×1.8, (precio 5 ml sin el extra)×1.6 y $119, redondeado a 9, +$20. */
+function reglaDec(perfumeId, costoFrasco, mlFrasco){
+  const c=decCfg(), pm=(+costoFrasco||0)/Math.max(1,+mlFrasco||100), g=GOAT[perfumeId];
+  const c5=pm*5+(+c.frasco5)+(+c.etiqueta)+(+c.bolsa||0), c10=pm*10+(+c.frasco10)+(+c.etiqueta)+(+c.bolsa||0);
+  const b5=r9(Math.max(c5*c.k5, g?g[0]:0, c.min5)), b10=r9(Math.max(c10*c.k10, g?g[1]:0, b5*c.r10, c.min10));
+  return {p5:b5+(+c.extra5||0), p10:b10+(+c.extra10||0), c5, c10, goat:g||null};
+}
 function decCfg(){ const f=finz(); if(f.decCfg) return Object.assign({}, DEC_CFG_DEF, f.decCfg); const o=Object.values(OTROS).map(d=>d&&d.finanzas&&d.finanzas.decCfg).find(Boolean); return Object.assign({}, DEC_CFG_DEF, o||{}); }
 function proxPaga(){ const dp=+decCfg().diaPaga, d=new Date(hoyISO()+"T12:00:00"); let n=(dp-d.getDay()+7)%7; if(n===0) n=7; return addDays(hoyISO(), n); }
-function precioDec(a, ml){ const c=decCfg(); return +(ml===5? (a.precio5||c.precio5) : (a.precio10||c.precio10)) || 0; }
+function precioDec(a, ml){ const ov = ml===5? a.precio5 : a.precio10; if(+ov) return +ov; const r=reglaDec(a.perfume, a.costo, a.ml); return ml===5? r.p5 : r.p10; }
 function costoMlDec(a){ return (+a.costo||0) / Math.max(1, +a.ml||100); }
-function costoDec(a, ml){ const c=decCfg(); return costoMlDec(a)*(ml+(+c.merma||0)) + (ml===5? +c.frasco5 : +c.frasco10) + (+c.etiqueta||0); }
+function costoDec(a, ml){ const c=decCfg(); return costoMlDec(a)*(ml+(+c.merma||0)) + (ml===5? +c.frasco5 : +c.frasco10) + (+c.etiqueta||0) + (+c.bolsa||0); }
 function usadoAbierto(a, ventas){ const c=decCfg(); let ml=0; ventas.forEach(v=>(v.items||[]).forEach(it=>{ if(it.abierto===a.id) ml += (+it.q||0)*((+it.ml||0)+(+c.merma||0)); })); return ml + (+a.ajuste||0); }
 function pagadoDec(v, abonos){ return (+v.pagado||0) + abonos.filter(x=>x.venta===v.id).reduce((s,x)=>s+(+x.monto||0),0); }
 function abiertosPorPerfume(){ const m={}; const add=f=>((f&&f.abiertos)||[]).forEach(a=>{ if(a&&!a.borrado&&a.perfume) m[a.perfume]=(m[a.perfume]||0)+1; }); add(S.finanzas); Object.values(OTROS).forEach(d=>add(d&&d.finanzas)); return m; }
@@ -1303,6 +1315,9 @@ function renderDecants(){
         <div class="meta">${v.cliente? esc(v.cliente)+" · ":""}${v.lugar? esc(v.lugar)+" · ":""}${sal>0.5? `debe ${money(sal)}` : "pagado"} · vendió ${esc(v.vend||v._quien)}</div>
         ${v._mio? `<div class="row"><button class="small quiet" data-deldec="ventasDec|${v.id}">Borrar</button></div>`:""}</div>`; }).join("")}</div>`; }).join("")
     : `<p class="empty">No hay ventas de decants en este mes.</p>`;
+  // lista de precios
+  const enStock = perfumes().filter(p=>p.stock!=null && p.stock>0 || F.abiertos.some(a=>!a.terminado&&a.perfume===p.id)).map(p=>{ const ab=F.abiertos.find(a=>!a.terminado&&a.perfume===p.id); const r=reglaDec(p.id, ab? ab.costo : costoDe(p,1), ab? ab.ml : mlDe(p)); return {p,r,ab}; }).sort((x,y)=>x.r.p5-y.r.p5 || x.p.n.localeCompare(y.p.n));
+  $("#dLista").innerHTML = `<thead><tr><th>Perfume</th><th class="num">5 ml</th><th class="num">Ganas</th><th class="num">10 ml</th><th class="num">Ganas</th><th class="num">Goat</th></tr></thead><tbody>${enStock.map(({p,r,ab})=>{ const p5=ab? precioDec(ab,5) : r.p5, p10=ab? precioDec(ab,10) : r.p10; return `<tr><td><strong>${esc(p.n)}</strong> <span class="meta">${esc(p.m)}${ab?" · abierto":""}</span></td><td class="num"><strong>${money(p5)}</strong></td><td class="num">${money(p5-r.c5)}</td><td class="num"><strong>${money(p10)}</strong></td><td class="num">${money(p10-r.c10)}</td><td class="num meta">${r.goat? money(r.goat[0])+" / "+money(r.goat[1]) : "—"}</td></tr>`; }).join("")}</tbody>`;
   // historial
   const TIPO={abiertos:"Frasco abierto", ventasDec:"Venta de decants", abonosDec:"Abono de decants"};
   const bs = F.borrados.filter(x=>TIPO[x._tipo] && !x.borradoCon).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
@@ -1314,21 +1329,22 @@ function formCfgDec(){
   const c=decCfg(), dias=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
   abrir(`<h3 id="ovTitle">Precios y costos de los decants</h3>
   <form id="fCfgDec" style="display:grid;gap:10px">
-    ${c.provisional? `<p class="pill warn" style="white-space:normal">Estos precios son provisionales. Pon los tuyos y se usan en todas las ventas nuevas.</p>`:""}
+    <p class="meta"><strong>Tu regla (mercado +$10):</strong> el de 5 ml toma lo más alto entre el precio de Goat, tu costo × 2.2 y $69; el de 10 ml lo más alto entre Goat, tu costo × 1.8, el de 5 ml × 1.6 y $119. Se redondea a terminación en 9 y se le suma lo de abajo.</p>
     <div class="fields">
-      <label for="dcP5">Precio decant 5 ml ($)<input id="dcP5" type="number" inputmode="decimal" min="0" step="any" value="${c.precio5}"></label>
-      <label for="dcP10">Precio decant 10 ml ($)<input id="dcP10" type="number" inputmode="decimal" min="0" step="any" value="${c.precio10}"></label>
+      <label for="dcX5">Subir sobre mercado, 5 ml ($)<input id="dcX5" type="number" inputmode="decimal" min="0" step="any" value="${c.extra5}"></label>
+      <label for="dcX10">Subir sobre mercado, 10 ml ($)<input id="dcX10" type="number" inputmode="decimal" min="0" step="any" value="${c.extra10}"></label>
+      <label for="dcBo">Costo bolsa ($)<input id="dcBo" type="number" inputmode="decimal" min="0" step="any" value="${c.bolsa}"></label>
       <label for="dcF5">Costo frasco 5 ml ($)<input id="dcF5" type="number" inputmode="decimal" min="0" step="any" value="${c.frasco5}"></label>
       <label for="dcF10">Costo frasco 10 ml ($)<input id="dcF10" type="number" inputmode="decimal" min="0" step="any" value="${c.frasco10}"></label>
       <label for="dcEt">Costo etiqueta ($)<input id="dcEt" type="number" inputmode="decimal" min="0" step="any" value="${c.etiqueta}"></label>
       <label for="dcMe">ml que se pierden por decant<input id="dcMe" type="number" inputmode="decimal" min="0" step="any" value="${c.merma}"></label>
       <label for="dcDia">Día de paga en las fábricas<select id="dcDia">${dias.map((d,i)=>`<option value="${i}" ${i==c.diaPaga?"selected":""}>${d}</option>`).join("")}</select></label>
     </div>
-    <p class="meta">El costo de cada decant = lo que costó el perfume por ml × ml + frasco + etiqueta. Cada frasco abierto puede tener su propio precio si es más caro.</p>
+    <p class="meta">El costo de cada decant = lo que costó el perfume por ml × ml + frasco + etiqueta + bolsa. Si a un frasco abierto le pones su propio precio, se usa ese en lugar de la regla.</p>
     <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">Guardar</button></div>
   </form>`);
   $("#fCfgDec").addEventListener("submit", ev=>{ ev.preventDefault();
-    finz().decCfg = {precio5:+$("#dcP5").value||0, precio10:+$("#dcP10").value||0, frasco5:+$("#dcF5").value||0, frasco10:+$("#dcF10").value||0, etiqueta:+$("#dcEt").value||0, merma:+$("#dcMe").value||0, diaPaga:+$("#dcDia").value, provisional:false};
+    finz().decCfg = Object.assign({}, decCfg(), {extra5:+$("#dcX5").value||0, extra10:+$("#dcX10").value||0, bolsa:+$("#dcBo").value||0, frasco5:+$("#dcF5").value||0, frasco10:+$("#dcF10").value||0, etiqueta:+$("#dcEt").value||0, merma:+$("#dcMe").value||0, diaPaga:+$("#dcDia").value});
     saveFinanzas(); cerrar(); renderAll(); toast("Precios de decants guardados"); });
 }
 function formAbrirDec(a){
@@ -1342,13 +1358,17 @@ function formAbrirDec(a){
       <label for="adMl">Tamaño del frasco (ml)<input id="adMl" type="number" inputmode="decimal" min="1" step="any" required value="${a.ml}"></label>
       <label for="adCosto">Lo que nos costó el frasco ($)<input id="adCosto" type="number" inputmode="decimal" min="0" step="any" value="${a.costo!=null? a.costo : ""}"></label>
       ${edit? `<label for="adResta">ml que le quedan de verdad<input id="adResta" type="number" inputmode="decimal" min="0" step="any" value="${Math.round(Math.max(0,a.ml-usadoAbierto(a, todasFin().ventasDec)))}"></label>` : `<label for="adFecha">Fecha<input id="adFecha" type="date" required value="${a.fecha}"></label>`}
-      <label for="adP5">Precio 5 ml ($)<input id="adP5" type="number" inputmode="decimal" min="0" step="any" placeholder="${c.precio5} (general)" value="${a.precio5||""}"></label>
-      <label for="adP10">Precio 10 ml ($)<input id="adP10" type="number" inputmode="decimal" min="0" step="any" placeholder="${c.precio10} (general)" value="${a.precio10||""}"></label>
+      <label for="adP5">Precio 5 ml ($)<input id="adP5" type="number" inputmode="decimal" min="0" step="any" placeholder="Con tu regla" value="${a.precio5||""}"></label>
+      <label for="adP10">Precio 10 ml ($)<input id="adP10" type="number" inputmode="decimal" min="0" step="any" placeholder="Con tu regla" value="${a.precio10||""}"></label>
     </div>
-    <p class="meta">Deja los precios vacíos para usar el precio general. Ponle otro si es un perfume más caro.</p>
+    <p class="meta" id="adRegla">Deja los precios vacíos para usar tu regla de mercado. Escribe uno solo si quieres cobrar distinto ese perfume.</p>
     <div class="row" style="justify-content:flex-end"><button type="button" class="quiet" data-cerrar>Cancelar</button><button type="submit">${edit?"Guardar":"Abrir frasco"}</button></div>
   </form>`);
-  if(!edit) $("#adPerf").addEventListener("change", ()=>{ const p=lista.find(x=>x.id===$("#adPerf").value); if(p) $("#adCosto").value = Math.round(costoDe(p,1))||""; });
+  const verRegla=()=>{ const pid= edit? a.perfume : $("#adPerf").value; if(!pid) return; const r=reglaDec(pid, +$("#adCosto").value||0, +$("#adMl").value||100);
+    $("#adP5").placeholder=`${money(r.p5)} con tu regla`; $("#adP10").placeholder=`${money(r.p10)} con tu regla`;
+    $("#adRegla").innerHTML=`Con tu regla: <strong>5 ml ${money(r.p5)}</strong> (ganas ${money(r.p5-r.c5)}) · <strong>10 ml ${money(r.p10)}</strong> (ganas ${money(r.p10-r.c10)})${r.goat?` · Goat: ${money(r.goat[0])} / ${money(r.goat[1])}`:""}. Deja los precios vacíos para usarla.`; };
+  if(!edit) $("#adPerf").addEventListener("change", ()=>{ const p=lista.find(x=>x.id===$("#adPerf").value); if(p){ $("#adCosto").value = Math.round(costoDe(p,1))||""; $("#adMl").value = mlDe(p); } verRegla(); });
+  ["#adCosto","#adMl"].forEach(sel=>$(sel).addEventListener("input", verRegla)); verRegla();
   $("#fAbDec").addEventListener("submit", ev=>{ ev.preventDefault();
     const ml=+$("#adMl").value||100, costo=+$("#adCosto").value||0, p5=+$("#adP5").value||0, p10=+$("#adP10").value||0;
     if(edit){ const x=finz().abiertos.find(y=>y.id===a.id); if(!x) return; Object.assign(x,{ml,costo,precio5:p5||null,precio10:p10||null});
