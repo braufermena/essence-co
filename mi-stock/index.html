@@ -643,7 +643,7 @@ section.view.on>*:nth-child(2){animation-delay:.08s} section.view.on>*:nth-child
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle"><div class="sheet" id="ovBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="config.js?b=1795723103"></script>
+<script src="config.js?b=1795819942"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 const C = window.ESSENCE_CONFIG || {};
@@ -678,12 +678,30 @@ async function arrancar(session){
     const p = pendiente(); if(!p || !navigator.onLine) return false;
     try{ const {error} = await sb.from("equipo").upsert({id:uid, data:p.data, updated_at:new Date().toISOString()}); if(error) throw error;
       if(JSON.stringify(pendiente())===JSON.stringify(p)) localStorage.removeItem(K("pendiente"));
-      ultimaEscritura=Date.now(); pill("Guardado en tu cuenta","good"); releer(); return true;
+      ultimaEscritura=Date.now(); pill("Guardado en tu cuenta","good"); releer(); programarPublicar(); return true;
     }catch(e){ avisoPend(); return false; }
   }
   addEventListener("online", ()=>{ subirPendiente(); releer(); });
   addEventListener("offline", avisoPend);
   setInterval(()=>{ if(pendiente()) subirPendiente(); }, 20000);
+  // Publica el stock (solo frascos, decants y precio) en la tabla pública que lee essenceyco.com
+  let pubT=null;
+  async function publicarStock(){
+    try{
+      if(typeof existencias!=="function" || typeof perfumes!=="function" || typeof todasFin!=="function" || !navigator.onLine) return;
+      existencias(); const F=todasFin(), ahora=new Date().toISOString();
+      const rows=perfumes().filter(p=>p&&p.id).map(p=>{
+        let dec=null;
+        (F.abiertos||[]).filter(a=>a.perfume===p.id).forEach(a=>{ const resta=(+a.ml||0)-(typeof usadoAbierto==="function"? usadoAbierto(a, F.ventasDec||[]) : 0); if(resta>=5 && !dec) dec=a; });
+        return {id:p.id, frascos:Math.max(0, Math.floor(+p.stock||0)), decant:!!dec, precio5: dec&&typeof precioDec==="function"? Math.round(precioDec(dec,5)) : null, precio10: dec&&typeof precioDec==="function"? Math.round(precioDec(dec,10)) : null, updated_at:ahora};
+      });
+      if(!rows.length) return;
+      const {error} = await sb.from("stock_publico").upsert(rows);
+      if(error) console.warn("stock_publico:", error.message);
+    }catch(e){ console.warn("publicarStock:", e); }
+  }
+  const programarPublicar = ()=>{ clearTimeout(pubT); pubT=setTimeout(publicarStock, 2500); };
+  window.publicarStock = publicarStock;
   const filaADoc = r=>({id:r.id, exists:true, data:()=>r.data, metadata:{fromCache:false, hasPendingWrites: r.id===uid && (escribiendo>0 || Date.now()-ultimaEscritura<2500 || !!pendiente())}});
   const db = {
     doc(path){
@@ -696,7 +714,7 @@ async function arrancar(session){
           escribiendo++;
           try{ const {error} = await sb.from("equipo").upsert({id, data:d, updated_at:new Date().toISOString()});
             if(error){ if(/permission|policy|JWT|row-level/i.test(error.message)) throw {code:"invalid_argument", message:error.message}; if(esRed(error)){ guardarLocal(); return; } throw {code:"unavailable", message:error.message}; }
-            localStorage.removeItem(K("pendiente"));
+            localStorage.removeItem(K("pendiente")); programarPublicar();
           }catch(e){ if(e && e.code) throw e; guardarLocal(); }
           finally { escribiendo--; ultimaEscritura=Date.now(); } }
       };
@@ -725,7 +743,8 @@ async function arrancar(session){
   window.__SB__ = sb; window.__UID__ = uid;
   $l("login").remove();
   const b=$l("btnSalir"); b.style.display=""; b.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
-  const sc=document.createElement("script"); sc.src="app.js?b=1795723103"; document.body.appendChild(sc);
+  const sc=document.createElement("script"); sc.src="app.js?b=1795819942"; document.body.appendChild(sc);
+  setTimeout(publicarStock, 8000);
 }
 $l("loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); $l("lgBtn").disabled=true; msg("Entrando…");
